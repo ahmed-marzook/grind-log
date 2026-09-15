@@ -1,4 +1,5 @@
 import { defineConfig } from 'astro/config';
+import icon from 'astro-icon';
 
 // This is a GitHub Pages *project* site (served under /grind-log/, not at
 // the domain root), so `base` must be set and every internal link/asset
@@ -12,4 +13,7 @@ export default defineConfig({
   // built as `${base}${path}` (e.g. src/pages/index.astro) collapses to
   // things like "/grind-logahmed/" on the deployed build.
   trailingSlash: 'always',
+  // Inlines Lucide icons as SVG at build time (via @iconify-json/lucide) —
+  // no client JS, no icon font, no external request.
+  integrations: [icon()],
 });

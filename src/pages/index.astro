@@ -1,5 +1,6 @@
 ---
 import { getCollection } from 'astro:content';
+import { Icon } from 'astro-icon/components';
 import Base from '../layouts/Base.astro';
 import {
   buildCalendarDays,
@@ -27,10 +28,10 @@ const base = import.meta.env.BASE_URL;
 const MINI_CALENDAR_WINDOW_DAYS = 28;
 
 const TODAY_STATUS = {
-  completed: { label: 'Completed today', icon: '✅' },
-  excused: { label: 'Excused today', icon: '🌙' },
-  missed: { label: 'Missed today', icon: '❌' },
-  'not-scheduled': { label: 'Nothing scheduled today', icon: '⚪' },
+  completed: { label: 'Completed today', icon: 'lucide:circle-check' },
+  excused: { label: 'Excused today', icon: 'lucide:moon' },
+  missed: { label: 'Missed today', icon: 'lucide:circle-x' },
+  'not-scheduled': { label: 'Nothing scheduled today', icon: 'lucide:circle' },
 } as const;
 
 const cards = persons.map((person) => {
@@ -68,16 +69,16 @@ const cards = persons.map((person) => {
             <a class={`person-card person-card--${todayStatus}`} href={`${base}${person}/`}>
               <div class="card-top">
                 <h2>{person}</h2>
-                <span class="today-badge">
-                  <span aria-hidden="true">{TODAY_STATUS[todayStatus].icon}</span>{' '}
+                <span class={`today-badge today-badge--${todayStatus}`}>
+                  <Icon name={TODAY_STATUS[todayStatus].icon} class="icon-status" aria-hidden="true" />
                   {TODAY_STATUS[todayStatus].label}
                 </span>
               </div>
               <p class="card-streak">
                 {streak ? (
                   <>
-                    <span aria-hidden="true">🔥</span> <strong>{streak.current}</strong> day streak
-                    · {streak.topic}
+                    <Icon name="lucide:flame" class="icon-flame" aria-hidden="true" />
+                    <strong>{streak.current}</strong> day streak · {streak.topic}
                   </>
                 ) : (
                   'No entries yet'
@@ -99,7 +100,8 @@ const cards = persons.map((person) => {
                 </div>
               )}
               <p class="card-goals">
-                <span aria-hidden="true">🎯</span> {goalsSummary}
+                <Icon name="lucide:target" class="icon-target" aria-hidden="true" />
+                {goalsSummary}
               </p>
             </a>
           </li>
@@ -158,12 +160,32 @@ const cards = persons.map((person) => {
     color: var(--text-dim);
     white-space: nowrap;
   }
+  .icon-status {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+  }
+  .today-badge--completed {
+    color: #3fb950;
+  }
+  .today-badge--excused {
+    color: var(--excused);
+  }
+  .today-badge--missed {
+    color: var(--missed-border);
+  }
   .card-streak {
     margin: 0.75rem 0;
     font-size: 0.9rem;
     display: flex;
     align-items: center;
     gap: 0.35rem;
+  }
+  .icon-flame {
+    width: 16px;
+    height: 16px;
+    color: #f0883e;
+    flex-shrink: 0;
   }
   .mini-calendar {
     display: grid;
@@ -211,5 +233,10 @@ const cards = persons.map((person) => {
     margin: 0;
     color: var(--text-dim);
     font-size: 0.85rem;
+  }
+  .icon-target {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
   }
 </style>
