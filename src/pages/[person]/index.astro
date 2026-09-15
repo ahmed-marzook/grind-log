@@ -1,0 +1,80 @@
+---
+import { getCollection } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+
+export async function getStaticPaths() {
+  const logs = await getCollection('logs');
+  const goals = await getCollection('goals');
+  const persons = new Set<string>();
+  for (const l of logs) persons.add(l.data.person);
+  for (const g of goals) persons.add(g.data.person);
+  return Array.from(persons).map((person) => ({ params: { person } }));
+}
+
+const { person } = Astro.params as { person: string };
+const logs = await getCollection('logs', (entry) => entry.data.person === person);
+const sorted = [...logs].sort((a, b) => b.data.date.getTime() - a.data.date.getTime());
+const base = import.meta.env.BASE_URL;
+---
+
+<Base title={person}>
+  <h1>{person}</h1>
+  <nav class="person-nav">
+    <a href={`${base}${person}/calendar`}>Calendar</a>
+  </nav>
+  <ul class="feed">
+    {
+      sorted.map((entry) => (
+        <li class={`entry entry--${entry.data.status}`}>
+          <time>{entry.data.date.toISOString().slice(0, 10)}</time>
+          {entry.data.status === 'completed' ? (
+            <>
+              <h2>{entry.data.title}</h2>
+              <p class="entry-topic">
+                {entry.data.topic} · {entry.data.minutes} min
+              </p>
+            </>
+          ) : (
+            <p class="entry-excused">Excused — {entry.data.reason}</p>
+          )}
+        </li>
+      ))
+    }
+  </ul>
+</Base>
+
+<style>
+  .person-nav {
+    margin-bottom: 1.5rem;
+  }
+  .feed {
+    list-style: none;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+  .entry {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem;
+  }
+  .entry time {
+    color: var(--text-dim);
+    font-size: 0.85rem;
+  }
+  .entry h2 {
+    margin: 0.25rem 0;
+    font-size: 1.05rem;
+  }
+  .entry-topic {
+    margin: 0;
+    color: var(--text-dim);
+    font-size: 0.9rem;
+  }
+  .entry-excused {
+    margin: 0;
+    color: var(--excused);
+    font-style: italic;
+  }
+</style>
