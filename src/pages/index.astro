@@ -4,11 +4,20 @@ import { Icon } from 'astro-icon/components';
 import Base from '../layouts/Base.astro';
 import {
   buildCalendarDays,
+  consistencyForWindow,
   formatDayTooltip,
   levelForMinutes,
   padCalendarDaysForGrid,
 } from '../lib/calendar.js';
-import { getBestCurrentStreak, resolveTodayStatus } from '../lib/dashboard.js';
+import {
+  buildRecentActivity,
+  computeOverview,
+  getBestCurrentStreak,
+  getMostRecentEntry,
+  resolveTodayStatus,
+} from '../lib/dashboard.js';
+import { formatRelativeDay } from '../lib/format.js';
+import { newLogEntryUrl, onboardingGuideUrl, personLogsUrl, REPO_URL } from '../lib/github.js';
 import { summarizeGoalsByStatus } from '../lib/goals.js';
 import { getAllPersons } from '../lib/people.js';
 import type { Goal, LogEntry } from '../lib/streaks.js';
@@ -22,6 +31,10 @@ const goals: Goal[] = goalCollection.map((g) => g.data);
 const persons = getAllPersons(entries, goals);
 const today = new Date();
 const base = import.meta.env.BASE_URL;
+
+const overview = computeOverview(persons, entries, goals, today);
+const RECENT_ACTIVITY_LIMIT = 8;
+const recentActivity = buildRecentActivity(entries, RECENT_ACTIVITY_LIMIT, today);
 
 // A card-sized peek, not the full calendar — just enough weeks to show
 // the shape of recent activity at a glance.
@@ -38,13 +51,16 @@ const cards = persons.map((person) => {
   const todayStatus = resolveTodayStatus(person, entries, goals, today);
   const streak = getBestCurrentStreak(person, entries, goals, today);
   const personGoals = goals.filter((g) => g.person === person);
+  const mostRecentEntry = getMostRecentEntry(person, entries, today);
 
   let miniCalendar: ReturnType<typeof padCalendarDaysForGrid> = [];
+  let consistency: number | null = null;
   if (streak) {
     const from = new Date(today);
     from.setUTCDate(from.getUTCDate() - (MINI_CALENDAR_WINDOW_DAYS - 1));
     const days = buildCalendarDays(entries, goals, person, streak.topic, { from, to: today });
     miniCalendar = padCalendarDaysForGrid(days);
+    consistency = consistencyForWindow(days);
   }
 
   return {
@@ -53,84 +69,389 @@ const cards = persons.map((person) => {
     streak,
     goalsSummary: summarizeGoalsByStatus(personGoals),
     miniCalendar,
+    consistency,
+    mostRecentEntry,
+    logUrl: personLogsUrl(person),
+    newEntryUrl: newLogEntryUrl(person, today),
   };
 });
 ---
 
 <Base title="Dashboard">
-  <h1>Study Log</h1>
+  <div class="dash-header">
+    <div>
+      <h1>Study Log</h1>
+      <p class="dash-subtitle">
+        A git-tracked study log — every entry below is a markdown file committed to the repo.
+      </p>
+    </div>
+    <a class="btn btn--primary" href={REPO_URL} target="_blank" rel="noopener">
+      <Icon name="lucide:github" class="icon-btn" aria-hidden="true" />
+      View repo on GitHub
+    </a>
+  </div>
+
+  <ul class="overview-grid">
+    <li class="overview-card">
+      <span class="overview-icon"><Icon name="lucide:clock" aria-hidden="true" /></span>
+      <span class="overview-label">Logged today</span>
+      <span class="overview-value">{overview.minutesLoggedToday} min</span>
+      <span class="overview-sub">
+        {overview.entriesLoggedToday} {overview.entriesLoggedToday === 1 ? 'entry' : 'entries'}
+      </span>
+    </li>
+    <li class="overview-card">
+      <span class="overview-icon"><Icon name="lucide:users" aria-hidden="true" /></span>
+      <span class="overview-label">People tracked</span>
+      <span class="overview-value">{overview.totalPeople}</span>
+      <span class="overview-sub">{overview.activePeopleCount} active this week</span>
+    </li>
+    <li class="overview-card">
+      <span class="overview-icon overview-icon--flame"><Icon name="lucide:flame" aria-hidden="true" /></span>
+      <span class="overview-label">Best current streak</span>
+      {
+        overview.bestStreak ? (
+          <>
+            <span class="overview-value">{overview.bestStreak.current} days</span>
+            <span class="overview-sub">
+              {overview.bestStreak.person} · {overview.bestStreak.topic}
+            </span>
+          </>
+        ) : (
+          <>
+            <span class="overview-value">—</span>
+            <span class="overview-sub">No active streaks yet</span>
+          </>
+        )
+      }
+    </li>
+    <li class="overview-card overview-card--cta">
+      <span class="overview-icon"><Icon name="lucide:sparkles" aria-hidden="true" /></span>
+      <span class="overview-label">New here?</span>
+      <span class="overview-value overview-value--small">Onboard yourself</span>
+      <a class="overview-link" href={onboardingGuideUrl()} target="_blank" rel="noopener">
+        Copy the example-person folder <Icon name="lucide:external-link" class="icon-inline" aria-hidden="true" />
+      </a>
+    </li>
+  </ul>
+
+  <h2 class="section-heading">People</h2>
   {
     cards.length === 0 ? (
       <p>No one has started logging yet.</p>
     ) : (
       <ul class="card-grid">
-        {cards.map(({ person, todayStatus, streak, goalsSummary, miniCalendar }) => (
-          <li>
-            <a class={`person-card person-card--${todayStatus}`} href={`${base}${person}/`}>
-              <div class="card-top">
-                <h2>{person}</h2>
-                <span class={`today-badge today-badge--${todayStatus}`}>
-                  <Icon name={TODAY_STATUS[todayStatus].icon} class="icon-status" aria-hidden="true" />
-                  {TODAY_STATUS[todayStatus].label}
-                </span>
-              </div>
-              <p class="card-streak">
-                {streak ? (
-                  <>
-                    <Icon name="lucide:flame" class="icon-flame" aria-hidden="true" />
-                    <strong>{streak.current}</strong> day streak · {streak.topic}
-                  </>
-                ) : (
-                  'No entries yet'
-                )}
-              </p>
-              {miniCalendar.length > 0 && (
-                <div class="mini-calendar" role="img" aria-label={`Recent ${streak?.topic} activity`}>
-                  {miniCalendar.map((day) =>
-                    day === null ? (
-                      <span class="mini-day mini-day--empty" />
-                    ) : (
-                      <span
-                        class={`mini-day mini-day--${day.state}`}
-                        data-level={day.state === 'completed' ? levelForMinutes(day.minutes) : undefined}
-                        title={formatDayTooltip(day)}
-                      />
-                    )
-                  )}
+        {cards.map(
+          ({
+            person,
+            todayStatus,
+            streak,
+            goalsSummary,
+            miniCalendar,
+            consistency,
+            mostRecentEntry,
+            logUrl,
+            newEntryUrl,
+          }) => (
+            <li>
+              <div class={`person-card person-card--${todayStatus}`}>
+                <div class="card-top">
+                  <h3>
+                    <a class="card-title-link" href={`${base}${person}/`}>
+                      {person}
+                    </a>
+                  </h3>
+                  <span class={`today-badge today-badge--${todayStatus}`}>
+                    <Icon
+                      name={TODAY_STATUS[todayStatus].icon}
+                      class="icon-status"
+                      aria-hidden="true"
+                    />
+                    {TODAY_STATUS[todayStatus].label}
+                  </span>
                 </div>
-              )}
-              <p class="card-goals">
-                <Icon name="lucide:target" class="icon-target" aria-hidden="true" />
-                {goalsSummary}
-              </p>
-            </a>
-          </li>
-        ))}
+
+                <p class="card-streak">
+                  {streak ? (
+                    <>
+                      <Icon name="lucide:flame" class="icon-flame" aria-hidden="true" />
+                      <span>
+                        <strong>{streak.current}</strong> day streak · {streak.topic}
+                        {streak.longest > streak.current && (
+                          <span class="card-streak-best"> (best {streak.longest})</span>
+                        )}
+                      </span>
+                    </>
+                  ) : (
+                    'No entries yet'
+                  )}
+                </p>
+
+                {miniCalendar.length > 0 && (
+                  <div class="mini-calendar-block">
+                    <div
+                      class="mini-calendar"
+                      role="img"
+                      aria-label={`Recent ${streak?.topic} activity`}
+                    >
+                      {miniCalendar.map((day) =>
+                        day === null ? (
+                          <span class="mini-day mini-day--empty" />
+                        ) : (
+                          <span
+                            class={`mini-day mini-day--${day.state}`}
+                            data-level={
+                              day.state === 'completed' ? levelForMinutes(day.minutes) : undefined
+                            }
+                            title={formatDayTooltip(day)}
+                          />
+                        )
+                      )}
+                    </div>
+                    {consistency !== null && (
+                      <span class="consistency-badge">{consistency}% consistency</span>
+                    )}
+                  </div>
+                )}
+
+                <p class="card-recent">
+                  <Icon name="lucide:activity" class="icon-recent" aria-hidden="true" />
+                  <span>
+                    {mostRecentEntry ? (
+                      mostRecentEntry.status === 'completed' ? (
+                        <>
+                          {mostRecentEntry.title} ·{' '}
+                          {formatRelativeDay(mostRecentEntry.date, today)}
+                        </>
+                      ) : (
+                        <>
+                          Excused ({mostRecentEntry.reason}) ·{' '}
+                          {formatRelativeDay(mostRecentEntry.date, today)}
+                        </>
+                      )
+                    ) : (
+                      'No entries logged yet'
+                    )}
+                  </span>
+                </p>
+
+                <p class="card-goals">
+                  <Icon name="lucide:target" class="icon-target" aria-hidden="true" />
+                  <span>{goalsSummary}</span>
+                </p>
+
+                <div class="card-actions">
+                  <a class="card-action" href={logUrl} target="_blank" rel="noopener">
+                    <Icon name="lucide:github" class="icon-inline" aria-hidden="true" />
+                    View logs
+                  </a>
+                  <a class="card-action card-action--accent" href={newEntryUrl} target="_blank" rel="noopener">
+                    <Icon name="lucide:plus" class="icon-inline" aria-hidden="true" />
+                    Log today
+                  </a>
+                </div>
+              </div>
+            </li>
+          )
+        )}
       </ul>
     )
   }
+
+  <div class="bottom-grid">
+    <section class="panel">
+      <h2 class="section-heading">Recent activity</h2>
+      {
+        recentActivity.length === 0 ? (
+          <p class="panel-empty">Nothing logged yet — be the first.</p>
+        ) : (
+          <ul class="activity-feed">
+            {recentActivity.map((item) => (
+              <li class="activity-row">
+                <span class="activity-when">{formatRelativeDay(item.date, today)}</span>
+                <span class="activity-body">
+                  <a href={`${base}${item.person}/`}>{item.person}</a>
+                  {item.status === 'completed' ? (
+                    <>
+                      {' '}
+                      logged <strong>{item.minutes} min</strong> on {item.topic} —{' '}
+                      {item.title}
+                    </>
+                  ) : (
+                    <> was excused — {item.reason}</>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )
+      }
+    </section>
+
+    <section class="panel">
+      <h2 class="section-heading">Log a session</h2>
+      <p class="panel-copy">
+        There's no app to sign into — a session is a markdown file committed to the repo. Open
+        one of the links below, fill in the fields GitHub's editor leaves blank, and commit.
+      </p>
+      <ul class="how-to-list">
+        <li>
+          <Icon name="lucide:plus" class="icon-inline" aria-hidden="true" />
+          <span>
+            Use a person card's <strong>Log today</strong> link above for a prefilled starter
+            file.
+          </span>
+        </li>
+        <li>
+          <Icon name="lucide:book-open" class="icon-inline" aria-hidden="true" />
+          <span>
+            <a href={onboardingGuideUrl()} target="_blank" rel="noopener">
+              Onboarding a new person
+            </a>{' '}
+            walks through adding a `logs/` and `goals/` folder for someone new.
+          </span>
+        </li>
+        <li>
+          <Icon name="lucide:github" class="icon-inline" aria-hidden="true" />
+          <span>
+            <a href={REPO_URL} target="_blank" rel="noopener">
+              Browse the full repo
+            </a>{' '}
+            to see every entry and goal file as-is.
+          </span>
+        </li>
+      </ul>
+    </section>
+  </div>
 </Base>
 
 <style>
+  .dash-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1.75rem;
+  }
+  .dash-header h1 {
+    margin: 0 0 0.25rem;
+  }
+  .dash-subtitle {
+    margin: 0;
+    color: var(--text-dim);
+    font-size: 0.95rem;
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.55rem 1rem;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .btn--primary {
+    background: var(--accent);
+    color: #0b0d11;
+  }
+  .btn--primary:hover {
+    text-decoration: none;
+    filter: brightness(1.08);
+  }
+  .icon-btn {
+    width: 16px;
+    height: 16px;
+  }
+
+  .overview-grid {
+    list-style: none;
+    margin: 0 0 2rem;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+  }
+  .overview-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem 1.1rem;
+  }
+  .overview-icon {
+    color: var(--accent);
+    margin-bottom: 0.35rem;
+  }
+  .overview-icon--flame {
+    color: #f0883e;
+  }
+  .overview-icon :global(svg) {
+    width: 18px;
+    height: 18px;
+  }
+  .overview-label {
+    color: var(--text-dim);
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .overview-value {
+    font-size: 1.6rem;
+    font-weight: 700;
+  }
+  .overview-value--small {
+    font-size: 1.1rem;
+  }
+  .overview-sub {
+    color: var(--text-dim);
+    font-size: 0.85rem;
+  }
+  .overview-card--cta {
+    justify-content: space-between;
+  }
+  .overview-link {
+    margin-top: 0.4rem;
+    font-size: 0.85rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+  }
+  .icon-inline {
+    width: 13px;
+    height: 13px;
+    flex-shrink: 0;
+    vertical-align: -1px;
+  }
+
+  .section-heading {
+    font-size: 1.05rem;
+    margin: 0 0 0.9rem;
+  }
+
   .card-grid {
     list-style: none;
     padding: 0;
-    margin: 0;
+    margin: 0 0 2.5rem;
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
     gap: 1rem;
   }
   .person-card {
-    display: block;
+    position: relative;
+    display: flex;
+    flex-direction: column;
     height: 100%;
+    background: var(--surface);
     border: 1px solid var(--border);
     border-left: 4px solid var(--not-scheduled);
-    border-radius: 8px;
+    border-radius: 10px;
     padding: 1rem;
-    color: var(--text);
   }
   .person-card:hover {
-    text-decoration: none;
     border-color: var(--accent);
   }
   .person-card--completed {
@@ -147,10 +468,22 @@ const cards = persons.map((person) => {
     align-items: baseline;
     justify-content: space-between;
     gap: 0.75rem;
+    flex-wrap: wrap;
   }
-  .card-top h2 {
+  .card-top h3 {
     margin: 0;
     font-size: 1.1rem;
+  }
+  .card-title-link {
+    color: var(--text);
+  }
+  /* Stretched-link pattern: the whole card is clickable via the title
+     link's ::after, while the explicit action links below stay on top
+     and remain independently clickable. */
+  .card-title-link::after {
+    content: '';
+    position: absolute;
+    inset: 0;
   }
   .today-badge {
     display: inline-flex;
@@ -175,11 +508,14 @@ const cards = persons.map((person) => {
     color: var(--missed-border);
   }
   .card-streak {
-    margin: 0.75rem 0;
+    margin: 0.75rem 0 0;
     font-size: 0.9rem;
     display: flex;
     align-items: center;
     gap: 0.35rem;
+  }
+  .card-streak-best {
+    color: var(--text-dim);
   }
   .icon-flame {
     width: 16px;
@@ -187,12 +523,18 @@ const cards = persons.map((person) => {
     color: #f0883e;
     flex-shrink: 0;
   }
+  .mini-calendar-block {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin: 0.75rem 0;
+  }
   .mini-calendar {
     display: grid;
     grid-auto-flow: column;
     grid-template-rows: repeat(7, 1fr);
     gap: 2px;
-    margin: 0.75rem 0;
     width: fit-content;
   }
   .mini-day {
@@ -226,11 +568,30 @@ const cards = persons.map((person) => {
   .mini-day--completed[data-level='4'] {
     background: #39d353;
   }
+  .consistency-badge {
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    white-space: nowrap;
+  }
+  .card-recent {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.35rem;
+    margin: 0;
+    color: var(--text-dim);
+    font-size: 0.85rem;
+  }
+  .icon-recent {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    margin-top: 0.15rem;
+  }
   .card-goals {
     display: flex;
     align-items: center;
     gap: 0.35rem;
-    margin: 0;
+    margin: 0.6rem 0 0;
     color: var(--text-dim);
     font-size: 0.85rem;
   }
@@ -238,5 +599,97 @@ const cards = persons.map((person) => {
     width: 14px;
     height: 14px;
     flex-shrink: 0;
+  }
+  .card-actions {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.9rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border);
+  }
+  .card-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.78rem;
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.3rem 0.55rem;
+  }
+  .card-action:hover {
+    text-decoration: none;
+    border-color: var(--accent);
+    color: var(--text);
+  }
+  .card-action--accent {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .bottom-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+    gap: 1.25rem;
+  }
+  @media (max-width: 720px) {
+    .bottom-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.25rem;
+  }
+  .panel-empty,
+  .panel-copy {
+    color: var(--text-dim);
+    font-size: 0.9rem;
+    margin: 0 0 0.75rem;
+  }
+  .activity-feed {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  .activity-row {
+    display: flex;
+    gap: 0.75rem;
+    font-size: 0.88rem;
+    align-items: baseline;
+  }
+  .activity-when {
+    color: var(--text-dim);
+    font-size: 0.78rem;
+    white-space: nowrap;
+    min-width: 5.5rem;
+  }
+  .activity-body strong {
+    color: var(--text);
+  }
+  .how-to-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    font-size: 0.88rem;
+    color: var(--text-dim);
+  }
+  .how-to-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+  .how-to-list .icon-inline {
+    margin-top: 0.2rem;
   }
 </style>

@@ -107,6 +107,25 @@ export function levelForMinutes(minutes: number | undefined): 1 | 2 | 3 | 4 {
   return 4;
 }
 
+/**
+ * Share of scheduled days in a window that were completed, as a rounded
+ * percentage. Excused days are neutral — they don't break a streak, but
+ * they aren't study time either — so they're excluded from both sides of
+ * the ratio rather than counted as a hit or a miss. Returns null when the
+ * window has no scheduled days at all (nothing to be consistent about).
+ */
+export function consistencyForWindow(days: CalendarDay[]): number | null {
+  let completed = 0;
+  let missed = 0;
+  for (const day of days) {
+    if (day.state === 'completed') completed++;
+    else if (day.state === 'missed') missed++;
+  }
+  const total = completed + missed;
+  if (total === 0) return null;
+  return Math.round((completed / total) * 100);
+}
+
 /** Hover/tap text for a single calendar day, shared across calendar views. */
 export function formatDayTooltip(day: CalendarDay): string {
   switch (day.state) {
