@@ -1,0 +1,136 @@
+---
+import { getCollection } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+import PersonNav from '../../components/PersonNav.astro';
+import { groupBy, STATUS_ORDER } from '../../lib/goals.js';
+import { getAllPersons } from '../../lib/people.js';
+
+export async function getStaticPaths() {
+  const logs = await getCollection('logs');
+  const goals = await getCollection('goals');
+  const persons = getAllPersons(logs.map((l) => l.data), goals.map((g) => g.data));
+  return persons.map((person) => ({ params: { person } }));
+}
+
+const { person } = Astro.params as { person: string };
+const goals = await getCollection('goals', (entry) => entry.data.person === person);
+
+const goalsWithContent = await Promise.all(
+  goals.map(async (goal) => ({ goal, Content: (await goal.render()).Content }))
+);
+
+const grouped = groupBy(goalsWithContent, (item) => item.goal.data.status, STATUS_ORDER);
+
+const STATUS_LABEL: Record<(typeof STATUS_ORDER)[number], string> = {
+  'in-progress': 'In progress',
+  pending: 'Pending',
+  achieved: 'Achieved',
+  cancelled: 'Cancelled',
+};
+
+// Achieved/cancelled goals stay visible but start collapsed — the point
+// is seeing follow-through over time, not hiding goals that didn't pan out.
+const COLLAPSED_BY_DEFAULT = new Set(['achieved', 'cancelled']);
+
+function formatDate(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+---
+
+<Base title={`${person} · goals`}>
+  <h1>{person}'s goals</h1>
+  <PersonNav person={person} active="goals" />
+
+  {
+    goalsWithContent.length === 0 ? (
+      <p>No goals yet.</p>
+    ) : (
+      STATUS_ORDER.map((status) => {
+        const items = grouped[status];
+        if (items.length === 0) return null;
+        return (
+          <details class="status-group" open={!COLLAPSED_BY_DEFAULT.has(status)}>
+            <summary>
+              {STATUS_LABEL[status]} ({items.length})
+            </summary>
+            <ul class="goal-list">
+              {items.map(({ goal, Content }) => (
+                <li class="goal-card">
+                  <div class="goal-header">
+                    <h2>{goal.data.title}</h2>
+                    <span class="goal-topic">{goal.data.topic}</span>
+                  </div>
+                  {(goal.data.started || goal.data.target_date) && (
+                    <p class="goal-dates">
+                      {goal.data.started && <>Started {formatDate(goal.data.started)}</>}
+                      {goal.data.started && goal.data.target_date && ' · '}
+                      {goal.data.target_date && <>Target {formatDate(goal.data.target_date)}</>}
+                    </p>
+                  )}
+                  <div class="goal-body">
+                    <Content />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </details>
+        );
+      })
+    )
+  }
+</Base>
+
+<style>
+  .status-group {
+    margin-bottom: 1.5rem;
+  }
+  .status-group summary {
+    cursor: pointer;
+    font-weight: 600;
+    padding: 0.5rem 0;
+  }
+  .goal-list {
+    list-style: none;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin-top: 0.75rem;
+  }
+  .goal-card {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem;
+  }
+  .goal-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+  .goal-header h2 {
+    margin: 0;
+    font-size: 1.05rem;
+  }
+  .goal-topic {
+    color: var(--text-dim);
+    font-size: 0.85rem;
+    white-space: nowrap;
+  }
+  .goal-dates {
+    margin: 0.25rem 0 0;
+    color: var(--text-dim);
+    font-size: 0.85rem;
+  }
+  .goal-body {
+    margin-top: 0.75rem;
+    color: var(--text-dim);
+    font-size: 0.95rem;
+  }
+  .goal-body :global(p:first-child) {
+    margin-top: 0;
+  }
+  .goal-body :global(p:last-child) {
+    margin-bottom: 0;
+  }
+</style>

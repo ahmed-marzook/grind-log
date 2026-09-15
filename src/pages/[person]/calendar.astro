@@ -1,17 +1,17 @@
 ---
 import { getCollection } from 'astro:content';
 import Base from '../../layouts/Base.astro';
+import PersonNav from '../../components/PersonNav.astro';
 import { buildCalendarDays, getPersonTopics, type CalendarDay } from '../../lib/calendar.js';
+import { getAllPersons } from '../../lib/people.js';
 import { calculateStreak } from '../../lib/streaks.js';
 import type { Goal, LogEntry } from '../../lib/streaks.js';
 
 export async function getStaticPaths() {
   const logs = await getCollection('logs');
   const goals = await getCollection('goals');
-  const persons = new Set<string>();
-  for (const l of logs) persons.add(l.data.person);
-  for (const g of goals) persons.add(g.data.person);
-  return Array.from(persons).map((person) => ({ params: { person } }));
+  const persons = getAllPersons(logs.map((l) => l.data), goals.map((g) => g.data));
+  return persons.map((person) => ({ params: { person } }));
 }
 
 const { person } = Astro.params as { person: string };
@@ -85,6 +85,7 @@ const topicData = topics.map((topic) => {
 
 <Base title={`${person} · calendar`}>
   <h1>{person}'s calendar</h1>
+  <PersonNav person={person} active="calendar" />
 
   {
     topicData.length === 0 ? (

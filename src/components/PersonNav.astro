@@ -1,0 +1,36 @@
+---
+interface Props {
+  person: string;
+  active: 'entries' | 'calendar' | 'goals';
+}
+const { person, active } = Astro.props;
+const base = import.meta.env.BASE_URL;
+const links = [
+  { key: 'entries', label: 'Entries', href: `${base}${person}/` },
+  { key: 'calendar', label: 'Calendar', href: `${base}${person}/calendar` },
+  { key: 'goals', label: 'Goals', href: `${base}${person}/goals` },
+] as const;
+---
+
+<nav class="person-nav">
+  {
+    links.map((link) => (
+      <a href={link.href} aria-current={link.key === active ? 'page' : undefined}>
+        {link.label}
+      </a>
+    ))
+  }
+</nav>
+
+<style>
+  .person-nav {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+  .person-nav a[aria-current='page'] {
+    color: var(--text);
+    font-weight: 600;
+    text-decoration: underline;
+  }
+</style>
