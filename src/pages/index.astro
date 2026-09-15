@@ -36,6 +36,11 @@ const overview = computeOverview(persons, entries, goals, today);
 const RECENT_ACTIVITY_LIMIT = 8;
 const recentActivity = buildRecentActivity(entries, RECENT_ACTIVITY_LIMIT, today);
 
+const goalsByPerson = persons.map((person) => ({
+  person,
+  personGoals: goals.filter((g) => g.person === person),
+}));
+
 // A card-sized peek, not the full calendar — just enough weeks to show
 // the shape of recent activity at a glance.
 const MINI_CALENDAR_WINDOW_DAYS = 28;
@@ -90,6 +95,39 @@ const cards = persons.map((person) => {
       View repo on GitHub
     </a>
   </div>
+
+  <section class="panel goals-overview-panel">
+    <h2 class="section-heading">Goals</h2>
+    {
+      goalsByPerson.every(({ personGoals }) => personGoals.length === 0) ? (
+        <p class="panel-empty">No goals set yet.</p>
+      ) : (
+        <ul class="goals-overview">
+          {goalsByPerson.map(({ person, personGoals }) => (
+            <li class="goals-overview-row">
+              <a class="goals-overview-person" href={`${base}${person}/goals`}>
+                {person}
+              </a>
+              {personGoals.length === 0 ? (
+                <span class="goals-overview-empty">No goals yet</span>
+              ) : (
+                <ul class="goals-overview-list">
+                  {personGoals.map((goal) => (
+                    <li>
+                      {goal.title}
+                      <span class={`goal-status-tag goal-status-tag--${goal.status}`}>
+                        {goal.status}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          ))}
+        </ul>
+      )
+    }
+  </section>
 
   <ul class="overview-grid">
     <li class="overview-card">
@@ -363,6 +401,58 @@ const cards = persons.map((person) => {
   .icon-btn {
     width: 16px;
     height: 16px;
+  }
+
+  .goals-overview-panel {
+    margin-bottom: 1.5rem;
+  }
+  .goals-overview {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+  }
+  .goals-overview-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.4rem 0.75rem;
+    font-size: 0.9rem;
+  }
+  .goals-overview-person {
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+  }
+  .goals-overview-empty {
+    color: var(--text-dim);
+  }
+  .goals-overview-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 0.9rem;
+    color: var(--text-dim);
+  }
+  .goal-status-tag {
+    margin-left: 0.35rem;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--text-dim);
+  }
+  .goal-status-tag--in-progress {
+    color: var(--accent);
+  }
+  .goal-status-tag--achieved {
+    color: #3fb950;
+  }
+  .goal-status-tag--cancelled {
+    color: var(--missed-border);
   }
 
   .overview-grid {
