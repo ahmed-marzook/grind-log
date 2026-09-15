@@ -29,7 +29,7 @@ export function onboardingGuideUrl(): string {
  */
 export function newLogEntryUrl(person: string, today: Date): string {
   const dateKey = today.toISOString().slice(0, 10);
-  const template = `---\ndate: ${dateKey}\nperson: ${person}\nstatus: completed\ntopic: \nminutes: \ntitle: ""\n---\n\n`;
+  const template = `---\ndate: ${dateKey}\nperson: ${person}\nstatus: completed\ntopic: \nminutes: \ntitle: ""\n---\n\n<!-- optional: a short note on what you learned or anything else worth remembering -->\n`;
   const params = new URLSearchParams({ filename: `${dateKey}.md`, value: template });
   return `${REPO_URL}/new/${BRANCH}/src/content/logs/${person}?${params.toString()}`;
 }

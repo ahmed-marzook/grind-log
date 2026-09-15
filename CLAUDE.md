@@ -128,6 +128,12 @@ A day with **no entry file at all** = missed, no excuse. A day with an
 `excused` entry = missed but doesn't break the streak. These need to
 stay visually and logically distinct everywhere in the app.
 
+The markdown body below the frontmatter is an optional short journal
+note — what was learned, or any other context worth keeping. There's
+no separate `description` field for this; it's free text, rendered on
+the person's hub page when present, same as a goal's body is rendered
+on the goals board.
+
 Example completed entry (`logs/example-person/2026-09-15.md`):
 ```markdown
 ---
