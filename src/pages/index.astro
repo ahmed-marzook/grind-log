@@ -1,70 +1,126 @@
 ---
 import { getCollection } from 'astro:content';
 import Base from '../layouts/Base.astro';
+import { getBestCurrentStreak, resolveTodayStatus } from '../lib/dashboard.js';
+import { summarizeGoalsByStatus } from '../lib/goals.js';
+import { getAllPersons } from '../lib/people.js';
+import type { Goal, LogEntry } from '../lib/streaks.js';
 
-const logs = await getCollection('logs');
-const sorted = [...logs].sort((a, b) => b.data.date.getTime() - a.data.date.getTime());
+const logCollection = await getCollection('logs');
+const goalCollection = await getCollection('goals');
+
+const entries: LogEntry[] = logCollection.map((l) => l.data);
+const goals: Goal[] = goalCollection.map((g) => g.data);
+
+const persons = getAllPersons(entries, goals);
+const today = new Date();
 const base = import.meta.env.BASE_URL;
+
+const TODAY_STATUS_LABEL = {
+  completed: 'Completed today',
+  excused: 'Excused today',
+  missed: 'Missed today',
+  'not-scheduled': 'Nothing scheduled today',
+} as const;
+
+const cards = persons.map((person) => {
+  const todayStatus = resolveTodayStatus(person, entries, goals, today);
+  const streak = getBestCurrentStreak(person, entries, goals, today);
+  const personGoals = goals.filter((g) => g.person === person);
+  return {
+    person,
+    todayStatus,
+    streak,
+    goalsSummary: summarizeGoalsByStatus(personGoals),
+  };
+});
 ---
 
-<Base title="Feed">
+<Base title="Dashboard">
   <h1>Study Log</h1>
-  <ul class="feed">
-    {
-      sorted.map((entry) => (
-        <li class={`entry entry--${entry.data.status}`}>
-          <div class="entry-meta">
-            <a href={`${base}${entry.data.person}/calendar`}>{entry.data.person}</a>
-            <time>{entry.data.date.toISOString().slice(0, 10)}</time>
-          </div>
-          {entry.data.status === 'completed' ? (
-            <>
-              <h2>{entry.data.title}</h2>
-              <p class="entry-topic">
-                {entry.data.topic} · {entry.data.minutes} min
+  {
+    cards.length === 0 ? (
+      <p>No one has started logging yet.</p>
+    ) : (
+      <ul class="card-grid">
+        {cards.map(({ person, todayStatus, streak, goalsSummary }) => (
+          <li>
+            <a class={`person-card person-card--${todayStatus}`} href={`${base}${person}/`}>
+              <div class="card-top">
+                <h2>{person}</h2>
+                <span class="today-badge">{TODAY_STATUS_LABEL[todayStatus]}</span>
+              </div>
+              <p class="card-streak">
+                {streak ? (
+                  <>
+                    <strong>{streak.current}</strong> day streak · {streak.topic}
+                  </>
+                ) : (
+                  'No entries yet'
+                )}
               </p>
-            </>
-          ) : (
-            <p class="entry-excused">Excused — {entry.data.reason}</p>
-          )}
-        </li>
-      ))
-    }
-  </ul>
+              <p class="card-goals">{goalsSummary}</p>
+            </a>
+          </li>
+        ))}
+      </ul>
+    )
+  }
 </Base>
 
 <style>
-  .feed {
+  .card-grid {
     list-style: none;
     padding: 0;
-    display: flex;
-    flex-direction: column;
+    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
     gap: 1rem;
   }
-  .entry {
+  .person-card {
+    display: block;
+    height: 100%;
     border: 1px solid var(--border);
+    border-left: 4px solid var(--not-scheduled);
     border-radius: 8px;
     padding: 1rem;
+    color: var(--text);
   }
-  .entry-meta {
+  .person-card:hover {
+    text-decoration: none;
+    border-color: var(--accent);
+  }
+  .person-card--completed {
+    border-left-color: #26a641;
+  }
+  .person-card--excused {
+    border-left-color: var(--excused);
+  }
+  .person-card--missed {
+    border-left-color: var(--missed-border);
+  }
+  .card-top {
     display: flex;
+    align-items: baseline;
     justify-content: space-between;
-    color: var(--text-dim);
-    font-size: 0.85rem;
-    margin-bottom: 0.5rem;
+    gap: 0.75rem;
   }
-  .entry h2 {
-    margin: 0 0 0.25rem;
-    font-size: 1.05rem;
-  }
-  .entry-topic {
+  .card-top h2 {
     margin: 0;
+    font-size: 1.1rem;
+  }
+  .today-badge {
+    font-size: 0.75rem;
     color: var(--text-dim);
+    white-space: nowrap;
+  }
+  .card-streak {
+    margin: 0.75rem 0 0.25rem;
     font-size: 0.9rem;
   }
-  .entry-excused {
+  .card-goals {
     margin: 0;
-    color: var(--excused);
-    font-style: italic;
+    color: var(--text-dim);
+    font-size: 0.85rem;
   }
 </style>

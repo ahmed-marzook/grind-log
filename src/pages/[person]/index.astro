@@ -14,14 +14,18 @@ export async function getStaticPaths() {
 const { person } = Astro.params as { person: string };
 const logs = await getCollection('logs', (entry) => entry.data.person === person);
 const sorted = [...logs].sort((a, b) => b.data.date.getTime() - a.data.date.getTime());
+
+const RECENT_ENTRIES_LIMIT = 10;
+const recent = sorted.slice(0, RECENT_ENTRIES_LIMIT);
 ---
 
 <Base title={person}>
   <h1>{person}</h1>
   <PersonNav person={person} active="entries" />
+  {recent.length === 0 && <p>No entries yet.</p>}
   <ul class="feed">
     {
-      sorted.map((entry) => (
+      recent.map((entry) => (
         <li class={`entry entry--${entry.data.status}`}>
           <time>{entry.data.date.toISOString().slice(0, 10)}</time>
           {entry.data.status === 'completed' ? (
