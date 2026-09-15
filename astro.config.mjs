@@ -5,5 +5,8 @@ import { defineConfig } from 'astro/config';
 // must go through it — see CLAUDE.md's "Hosting: GitHub Pages" section.
 export default defineConfig({
   site: 'https://ahmed-marzook.github.io',
-  base: '/grind-log',
+  // Trailing slash matters: import.meta.env.BASE_URL echoes `base` verbatim,
+  // and every internal link across the app is built as `${base}${path}` —
+  // without it, links collapse to things like "/grind-logahmed/".
+  base: '/grind-log/',
 });

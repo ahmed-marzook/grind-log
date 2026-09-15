@@ -1,27 +1,16 @@
 ---
 import { getCollection } from 'astro:content';
 import Base from '../layouts/Base.astro';
-import { countBy, STATUS_ORDER } from '../lib/goals.js';
+import { summarizeGoalsByStatus } from '../lib/goals.js';
 import { getAllPersons } from '../lib/people.js';
 
 const logs = await getCollection('logs');
 const goals = await getCollection('goals');
 const persons = getAllPersons(logs.map((l) => l.data), goals.map((g) => g.data));
 
-const STATUS_LABEL: Record<(typeof STATUS_ORDER)[number], string> = {
-  'in-progress': 'in progress',
-  pending: 'pending',
-  achieved: 'achieved',
-  cancelled: 'cancelled',
-};
-
 const summaries = persons.map((person) => {
   const personGoals = goals.filter((g) => g.data.person === person).map((g) => g.data);
-  const counts = countBy(personGoals, (g) => g.status, STATUS_ORDER);
-  const parts = STATUS_ORDER.filter((status) => counts[status] > 0).map(
-    (status) => `${counts[status]} ${STATUS_LABEL[status]}`
-  );
-  return { person, summary: parts.length > 0 ? parts.join(', ') : 'no goals yet' };
+  return { person, summary: summarizeGoalsByStatus(personGoals) };
 });
 
 const base = import.meta.env.BASE_URL;
