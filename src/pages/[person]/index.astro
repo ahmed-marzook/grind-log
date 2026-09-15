@@ -1,0 +1,74 @@
+---
+import { getCollection } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+import PersonNav from '../../components/PersonNav.astro';
+import { getAllPersons } from '../../lib/people.js';
+
+export async function getStaticPaths() {
+  const logs = await getCollection('logs');
+  const goals = await getCollection('goals');
+  const persons = getAllPersons(logs.map((l) => l.data), goals.map((g) => g.data));
+  return persons.map((person) => ({ params: { person } }));
+}
+
+const { person } = Astro.params as { person: string };
+const logs = await getCollection('logs', (entry) => entry.data.person === person);
+const sorted = [...logs].sort((a, b) => b.data.date.getTime() - a.data.date.getTime());
+---
+
+<Base title={person}>
+  <h1>{person}</h1>
+  <PersonNav person={person} active="entries" />
+  <ul class="feed">
+    {
+      sorted.map((entry) => (
+        <li class={`entry entry--${entry.data.status}`}>
+          <time>{entry.data.date.toISOString().slice(0, 10)}</time>
+          {entry.data.status === 'completed' ? (
+            <>
+              <h2>{entry.data.title}</h2>
+              <p class="entry-topic">
+                {entry.data.topic} · {entry.data.minutes} min
+              </p>
+            </>
+          ) : (
+            <p class="entry-excused">Excused — {entry.data.reason}</p>
+          )}
+        </li>
+      ))
+    }
+  </ul>
+</Base>
+
+<style>
+  .feed {
+    list-style: none;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+  .entry {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem;
+  }
+  .entry time {
+    color: var(--text-dim);
+    font-size: 0.85rem;
+  }
+  .entry h2 {
+    margin: 0.25rem 0;
+    font-size: 1.05rem;
+  }
+  .entry-topic {
+    margin: 0;
+    color: var(--text-dim);
+    font-size: 0.9rem;
+  }
+  .entry-excused {
+    margin: 0;
+    color: var(--excused);
+    font-style: italic;
+  }
+</style>

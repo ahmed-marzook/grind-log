@@ -1,0 +1,64 @@
+---
+import { getCollection } from 'astro:content';
+import Base from '../layouts/Base.astro';
+import { countBy, STATUS_ORDER } from '../lib/goals.js';
+import { getAllPersons } from '../lib/people.js';
+
+const logs = await getCollection('logs');
+const goals = await getCollection('goals');
+const persons = getAllPersons(logs.map((l) => l.data), goals.map((g) => g.data));
+
+const STATUS_LABEL: Record<(typeof STATUS_ORDER)[number], string> = {
+  'in-progress': 'in progress',
+  pending: 'pending',
+  achieved: 'achieved',
+  cancelled: 'cancelled',
+};
+
+const summaries = persons.map((person) => {
+  const personGoals = goals.filter((g) => g.data.person === person).map((g) => g.data);
+  const counts = countBy(personGoals, (g) => g.status, STATUS_ORDER);
+  const parts = STATUS_ORDER.filter((status) => counts[status] > 0).map(
+    (status) => `${counts[status]} ${STATUS_LABEL[status]}`
+  );
+  return { person, summary: parts.length > 0 ? parts.join(', ') : 'no goals yet' };
+});
+
+const base = import.meta.env.BASE_URL;
+---
+
+<Base title="Stats">
+  <h1>Stats</h1>
+  <ul class="person-summaries">
+    {
+      summaries.map(({ person, summary }) => (
+        <li>
+          <a href={`${base}${person}/goals`}>{person}</a>
+          <span class="goal-summary">{summary}</span>
+        </li>
+      ))
+    }
+  </ul>
+</Base>
+
+<style>
+  .person-summaries {
+    list-style: none;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  .person-summaries li {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+  }
+  .goal-summary {
+    color: var(--text-dim);
+    font-size: 0.9rem;
+  }
+</style>

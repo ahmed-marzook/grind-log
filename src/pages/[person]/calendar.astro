@@ -1,0 +1,232 @@
+---
+import { getCollection } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+import PersonNav from '../../components/PersonNav.astro';
+import { buildCalendarDays, getPersonTopics, type CalendarDay } from '../../lib/calendar.js';
+import { getAllPersons } from '../../lib/people.js';
+import { calculateStreak } from '../../lib/streaks.js';
+import type { Goal, LogEntry } from '../../lib/streaks.js';
+
+export async function getStaticPaths() {
+  const logs = await getCollection('logs');
+  const goals = await getCollection('goals');
+  const persons = getAllPersons(logs.map((l) => l.data), goals.map((g) => g.data));
+  return persons.map((person) => ({ params: { person } }));
+}
+
+const { person } = Astro.params as { person: string };
+
+const entries: LogEntry[] = (await getCollection('logs')).map((l) => l.data);
+const goals: Goal[] = (await getCollection('goals')).map((g) => g.data);
+
+const topics = getPersonTopics(person, entries, goals);
+const today = new Date();
+
+// How far back to render when a topic has no goal start date and no
+// entries yet — just enough to show a non-empty grid, not a schedule.
+const DEFAULT_LOOKBACK_DAYS = 84;
+
+function earliestFor(topic: string): Date {
+  const goal = goals.find(
+    (g) => g.person === person && g.topic === topic && g.status === 'in-progress'
+  );
+  const candidates: Date[] = [];
+  if (goal?.started) candidates.push(goal.started);
+  for (const e of entries) {
+    if (e.person === person && e.status === 'completed' && e.topic === topic) {
+      candidates.push(e.date);
+    }
+  }
+  if (candidates.length === 0) {
+    const fallback = new Date(today);
+    fallback.setUTCDate(fallback.getUTCDate() - DEFAULT_LOOKBACK_DAYS);
+    return fallback;
+  }
+  return new Date(Math.min(...candidates.map((d) => d.getTime())));
+}
+
+function level(minutes: number | undefined): 1 | 2 | 3 | 4 {
+  if (minutes == null) return 1;
+  if (minutes < 20) return 1;
+  if (minutes < 40) return 2;
+  if (minutes < 60) return 3;
+  return 4;
+}
+
+function tooltip(day: CalendarDay): string {
+  switch (day.state) {
+    case 'completed':
+      return `${day.date}: ${day.title} (${day.minutes} min)`;
+    case 'excused':
+      return `${day.date}: Excused — ${day.reason}`;
+    case 'missed':
+      return `${day.date}: Missed`;
+    default:
+      return `${day.date}: Not scheduled`;
+  }
+}
+
+// Pad the front of the grid so the first real day lands in its correct
+// weekday column, then render flat — with grid-auto-flow: column and 7
+// explicit rows, a flat array fills column-major, i.e. week by week.
+function padForGrid(days: CalendarDay[]): (CalendarDay | null)[] {
+  if (days.length === 0) return [];
+  const firstDow = new Date(`${days[0].date}T00:00:00.000Z`).getUTCDay();
+  return [...Array(firstDow).fill(null), ...days];
+}
+
+const topicData = topics.map((topic) => {
+  const from = earliestFor(topic);
+  const days = buildCalendarDays(entries, goals, person, topic, { from, to: today });
+  const streak = calculateStreak(entries, goals, person, topic, today);
+  return { topic, days: padForGrid(days), streak };
+});
+---
+
+<Base title={`${person} · calendar`}>
+  <h1>{person}'s calendar</h1>
+  <PersonNav person={person} active="calendar" />
+
+  {
+    topicData.length === 0 ? (
+      <p>No topics logged yet.</p>
+    ) : (
+      <>
+        <label class="topic-filter">
+          Topic:
+          <select id="topic-select">
+            {topicData.map(({ topic }, i) => (
+              <option value={topic} selected={i === 0}>
+                {topic}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {topicData.map(({ topic, days, streak }, i) => (
+          <section class="topic-panel" data-topic-section={topic} hidden={i !== 0}>
+            <p class="streaks">
+              <strong>{streak.current}</strong> day current streak ·{' '}
+              <strong>{streak.longest}</strong> day longest streak
+            </p>
+            <div class="calendar-grid">
+              {days.map((day) =>
+                day === null ? (
+                  <div class="day day--empty" />
+                ) : (
+                  <div
+                    class={`day day--${day.state}`}
+                    data-level={day.state === 'completed' ? level(day.minutes) : undefined}
+                    title={tooltip(day)}
+                  />
+                )
+              )}
+            </div>
+            <ul class="legend">
+              <li><span class="swatch swatch--completed" /> Completed</li>
+              <li><span class="swatch swatch--excused" /> Excused</li>
+              <li><span class="swatch swatch--missed" /> Missed</li>
+              <li><span class="swatch swatch--not-scheduled" /> Not scheduled</li>
+            </ul>
+          </section>
+        ))}
+      </>
+    )
+  }
+</Base>
+
+<script>
+  const select = document.querySelector<HTMLSelectElement>('#topic-select');
+  const sections = document.querySelectorAll<HTMLElement>('[data-topic-section]');
+  select?.addEventListener('change', () => {
+    for (const section of sections) {
+      section.hidden = section.dataset.topicSection !== select.value;
+    }
+  });
+</script>
+
+<style>
+  .topic-filter {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+    color: var(--text-dim);
+  }
+  .streaks {
+    margin: 0 0 1rem;
+  }
+  .calendar-grid {
+    display: grid;
+    grid-auto-flow: column;
+    grid-template-rows: repeat(7, 1fr);
+    gap: 3px;
+    overflow-x: auto;
+    padding-bottom: 0.5rem;
+  }
+  .day {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    box-sizing: border-box;
+  }
+  .day--empty {
+    visibility: hidden;
+  }
+  .day--not-scheduled {
+    background: var(--not-scheduled);
+  }
+  .day--missed {
+    background: transparent;
+    border: 1px solid var(--missed-border);
+  }
+  .day--excused {
+    background: var(--excused);
+  }
+  .day--completed[data-level='1'] {
+    background: #0e4429;
+  }
+  .day--completed[data-level='2'] {
+    background: #006d32;
+  }
+  .day--completed[data-level='3'] {
+    background: #26a641;
+  }
+  .day--completed[data-level='4'] {
+    background: #39d353;
+  }
+  .legend {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    padding: 0;
+    margin: 1rem 0 2rem;
+    color: var(--text-dim);
+    font-size: 0.85rem;
+  }
+  .legend li {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .swatch {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    display: inline-block;
+  }
+  .swatch--completed {
+    background: #26a641;
+  }
+  .swatch--excused {
+    background: var(--excused);
+  }
+  .swatch--missed {
+    background: transparent;
+    border: 1px solid var(--missed-border);
+  }
+  .swatch--not-scheduled {
+    background: var(--not-scheduled);
+  }
+</style>
