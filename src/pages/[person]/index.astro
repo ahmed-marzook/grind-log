@@ -17,6 +17,15 @@ const sorted = [...logs].sort((a, b) => b.data.date.getTime() - a.data.date.getT
 
 const RECENT_ENTRIES_LIMIT = 10;
 const recent = sorted.slice(0, RECENT_ENTRIES_LIMIT);
+
+// The markdown body is an optional short journal note — what was learned,
+// or any other context. Only render it for entries that actually wrote one.
+const recentWithNotes = await Promise.all(
+  recent.map(async (entry) => ({
+    entry,
+    Notes: entry.body?.trim() ? (await entry.render()).Content : null,
+  }))
+);
 ---
 
 <Base title={person}>
@@ -25,7 +34,7 @@ const recent = sorted.slice(0, RECENT_ENTRIES_LIMIT);
   {recent.length === 0 && <p>No entries yet.</p>}
   <ul class="feed">
     {
-      recent.map((entry) => (
+      recentWithNotes.map(({ entry, Notes }) => (
         <li class={`entry entry--${entry.data.status}`}>
           <time>{entry.data.date.toISOString().slice(0, 10)}</time>
           {entry.data.status === 'completed' ? (
@@ -37,6 +46,11 @@ const recent = sorted.slice(0, RECENT_ENTRIES_LIMIT);
             </>
           ) : (
             <p class="entry-excused">Excused — {entry.data.reason}</p>
+          )}
+          {Notes && (
+            <div class="entry-notes">
+              <Notes />
+            </div>
           )}
         </li>
       ))
@@ -74,5 +88,16 @@ const recent = sorted.slice(0, RECENT_ENTRIES_LIMIT);
     margin: 0;
     color: var(--excused);
     font-style: italic;
+  }
+  .entry-notes {
+    margin-top: 0.5rem;
+    color: var(--text-dim);
+    font-size: 0.9rem;
+  }
+  .entry-notes :global(p:first-child) {
+    margin-top: 0;
+  }
+  .entry-notes :global(p:last-child) {
+    margin-bottom: 0;
   }
 </style>
