@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { getBestCurrentStreak, resolveTodayStatus } from './dashboard.js';
+import {
+  buildRecentActivity,
+  computeOverview,
+  getBestCurrentStreak,
+  getMostRecentEntry,
+  resolveTodayStatus,
+} from './dashboard.js';
 import type { Goal, LogEntry } from './streaks.js';
 
 const TODAY = new Date('2026-09-16T12:00:00.000Z'); // Wednesday
@@ -78,5 +84,70 @@ describe('getBestCurrentStreak', () => {
 
   it('returns null for a person with no topics yet', () => {
     expect(getBestCurrentStreak('nobody', [], [], TODAY)).toBeNull();
+  });
+});
+
+describe('computeOverview', () => {
+  it('totals entries/minutes logged today and finds the best active streak', () => {
+    const goals = [goal({ scheduled_days: ['mon', 'tue', 'wed', 'thu', 'fri'] })];
+    const entries = [
+      entry('2026-09-16', { person: 'ahmed', minutes: 30 }), // today
+      entry('2026-09-16', { person: 'bea', minutes: 20 }), // today
+      entry('2026-09-15', { person: 'ahmed', minutes: 40 }), // yesterday, not counted today
+      entry('2026-09-14', { person: 'ahmed' }),
+    ];
+
+    const overview = computeOverview(['ahmed', 'bea', 'carl'], entries, goals, TODAY);
+    expect(overview.totalPeople).toBe(3);
+    expect(overview.entriesLoggedToday).toBe(2);
+    expect(overview.minutesLoggedToday).toBe(50);
+    expect(overview.activePeopleCount).toBe(2); // ahmed + bea within the last 7 days, not carl
+    expect(overview.bestStreak).toEqual({ person: 'ahmed', topic: 'dsa', current: 3, longest: 3 });
+  });
+
+  it('reports no best streak when nobody has an active one', () => {
+    const overview = computeOverview(['ahmed'], [], [], TODAY);
+    expect(overview.bestStreak).toBeNull();
+  });
+});
+
+describe('getMostRecentEntry', () => {
+  it('returns the latest entry for a person regardless of status', () => {
+    const entries = [
+      entry('2026-09-10'),
+      entry('2026-09-14', { status: 'excused', topic: undefined, reason: 'sick' }),
+      entry('2026-09-12'),
+    ];
+    expect(getMostRecentEntry('ahmed', entries, TODAY)?.date.toISOString().slice(0, 10)).toBe(
+      '2026-09-14'
+    );
+  });
+
+  it('ignores a future-dated entry (e.g. an example/template file)', () => {
+    const entries = [entry('2026-09-12'), entry('2026-09-20')];
+    expect(getMostRecentEntry('ahmed', entries, TODAY)?.date.toISOString().slice(0, 10)).toBe(
+      '2026-09-12'
+    );
+  });
+
+  it('returns null for a person with no entries', () => {
+    expect(getMostRecentEntry('nobody', [], TODAY)).toBeNull();
+  });
+});
+
+describe('buildRecentActivity', () => {
+  it('sorts entries newest first and applies the limit', () => {
+    const entries = [entry('2026-09-10'), entry('2026-09-14'), entry('2026-09-12')];
+    const activity = buildRecentActivity(entries, 2, TODAY);
+    expect(activity.map((e) => e.date.toISOString().slice(0, 10))).toEqual([
+      '2026-09-14',
+      '2026-09-12',
+    ]);
+  });
+
+  it('excludes future-dated entries from the feed', () => {
+    const entries = [entry('2026-09-12'), entry('2026-09-20')];
+    const activity = buildRecentActivity(entries, 5, TODAY);
+    expect(activity.map((e) => e.date.toISOString().slice(0, 10))).toEqual(['2026-09-12']);
   });
 });

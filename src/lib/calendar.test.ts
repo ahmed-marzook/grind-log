@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildCalendarDays,
+  consistencyForWindow,
   formatDayTooltip,
   getPersonTopics,
   levelForMinutes,
@@ -103,6 +104,33 @@ describe('formatDayTooltip', () => {
     expect(formatDayTooltip({ ...base, state: 'not-scheduled' })).toBe(
       '2026-09-14: Not scheduled'
     );
+  });
+});
+
+describe('consistencyForWindow', () => {
+  const base: CalendarDay = { date: '2026-09-14', state: 'completed' };
+
+  it('is the share of scheduled days completed', () => {
+    const days: CalendarDay[] = [
+      { ...base, state: 'completed' },
+      { ...base, state: 'completed' },
+      { ...base, state: 'missed' },
+      { ...base, state: 'not-scheduled' },
+    ];
+    expect(consistencyForWindow(days)).toBe(67); // 2 of 3 scheduled days
+  });
+
+  it('excludes excused days from both sides of the ratio', () => {
+    const days: CalendarDay[] = [
+      { ...base, state: 'completed' },
+      { ...base, state: 'excused' },
+    ];
+    expect(consistencyForWindow(days)).toBe(100); // 1 of 1 non-excused scheduled day
+  });
+
+  it('returns null when nothing was scheduled in the window', () => {
+    const days: CalendarDay[] = [{ ...base, state: 'not-scheduled' }];
+    expect(consistencyForWindow(days)).toBeNull();
   });
 });
 
