@@ -1,0 +1,242 @@
+# study-log — agent context
+
+## What this is
+A git-managed study log for tracking daily study practice and progress
+toward personal goals, for me and others. Entries are markdown files
+with frontmatter, committed directly to the repo — no backend, no
+database. Static site, rebuilt on push.
+
+Each person studies different things on different schedules — there is
+no fixed topic list and no fixed set of "study days." Topic and
+schedule are per-person, per-goal, declared by each person in their
+own files. Don't hardcode any topic names or day-of-week schedules
+anywhere in the code.
+
+## Stack
+- Astro (content collections, not a CMS)
+- Deployed via GitHub Pages + `withastro/action`
+- No JS framework needed unless a feature genuinely requires client-side
+  interactivity (e.g. hover tooltips on the calendar) — prefer Astro
+  islands with minimal JS over reaching for React.
+
+## Hosting: GitHub Pages
+This is a **project site**, not a user/org site — it's served at
+`https://<username>.github.io/<repo-name>/`, not at the domain root.
+This has real consequences, not just a URL detail:
+
+- `astro.config.mjs` must set both `site` (the full
+  `https://<username>.github.io` URL) and `base` (`/<repo-name>`) —
+  omitting `base` is the most common cause of broken CSS/asset paths
+  and broken internal links on GitHub Pages specifically.
+- Every internal link and asset reference must be built with Astro's
+  `base`-aware helpers (e.g. resolve via `import.meta.env.BASE_URL`
+  or Astro's built-in link handling) rather than hardcoded
+  root-relative paths like `/calendar` — those will 404 once the
+  site is live under the `/study-log/`-style subpath, even though
+  they work fine in local dev at the root.
+- Deploy via the official `withastro/action` GitHub Action, triggered
+  on push to `main`, publishing to the `gh-pages` branch or GitHub's
+  native Pages deployment (whichever the action's current default is
+  — check its README when setting up the workflow, don't assume).
+- Test the base-path behavior with `astro build` + `astro preview`
+  locally before trusting it works, since local `astro dev` doesn't
+  always surface base-path bugs the same way a real subpath
+  deployment does.
+
+## Structure
+```
+src/
+  content/
+    config.ts
+    logs/
+      example-person/
+        2026-09-15.md      — a completed entry
+        2026-09-20.md      — an excused entry
+      ahmed/
+        ...
+    goals/
+      example-person/
+        neetcode-beginner.md
+        claude-cert.md
+      ahmed/
+        ...
+  layouts/Base.astro
+  pages/
+    index.astro         — chronological feed of all entries, everyone
+    [person]/index.astro — per-person entry list
+    [person]/calendar.astro — per-person heatmap calendar
+    [person]/goals.astro    — per-person goals board
+    stats.astro          — totals + streaks across everyone
+```
+
+`example-person` is a living template, not a demo to delete — every
+new person copies that folder pattern (one `logs/<name>/` folder, one
+`goals/<name>/` folder) to onboard themselves. Keep its example entries
+realistic and keep them in the repo permanently so the pattern is
+always discoverable by example, not just by reading this file.
+
+## Schema (src/content/config.ts)
+
+### logs collection
+Topic is a free string — never an enum, never validated against a
+fixed list. Each person invents their own topic names.
+
+```typescript
+const logs = defineCollection({
+  type: 'content',
+  schema: z.object({
+    date: z.date(),
+    person: z.string(),
+    status: z.enum(['completed', 'excused']).default('completed'),
+    reason: z.string().optional(),   // required when status is 'excused'
+    topic: z.string().optional(),    // required when status is 'completed'
+    minutes: z.number().optional(),  // required when status is 'completed'
+    title: z.string().optional(),    // required when status is 'completed'
+    tags: z.array(z.string()).optional(),
+  }).refine(/* completed requires topic+minutes+title; excused requires reason */),
+});
+```
+
+A day with **no entry file at all** = missed, no excuse. A day with an
+`excused` entry = missed but doesn't break the streak. These need to
+stay visually and logically distinct everywhere in the app.
+
+Example completed entry (`logs/example-person/2026-09-15.md`):
+```markdown
+---
+date: 2026-09-15
+person: example-person
+status: completed
+topic: dsa
+minutes: 30
+title: "Sliding Window: Longest Substring Without Repeats"
+tags: ["shaky"]
+---
+Cold attempt got the brute force in ~12 min but missed shrinking the
+window correctly. The "expand until invalid, then shrink" pattern is
+the trigger to remember next time.
+```
+
+Example excused entry (`logs/example-person/2026-09-20.md`):
+```markdown
+---
+date: 2026-09-20
+person: example-person
+status: excused
+reason: "Travel day — no laptop access"
+---
+```
+
+### goals collection
+One file per goal, per person. This is what replaces any hardcoded
+schedule — each goal declares its own topic and, optionally, which
+days it's meant to happen. Streak/calendar logic reads schedule from
+here, not from code.
+
+```typescript
+const goals = defineCollection({
+  type: 'content',
+  schema: z.object({
+    person: z.string(),
+    topic: z.string(),
+    title: z.string(),
+    status: z.enum(['pending', 'in-progress', 'achieved', 'cancelled']),
+    scheduled_days: z.array(
+      z.enum(['mon','tue','wed','thu','fri','sat','sun'])
+    ).optional(),               // which days this goal expects activity
+    started: z.date().optional(),
+    target_date: z.date().optional(),
+    updated: z.date(),
+  }),
+});
+```
+Body = free text: why this goal, what "done" looks like, running notes
+on progress. Since it's git-tracked, `git log` on a single goal file
+is itself a progress history — don't try to duplicate that as a
+separate changelog field.
+
+Example (`goals/example-person/neetcode-beginner.md`):
+```markdown
+---
+person: example-person
+topic: dsa
+title: "Finish NeetCode Beginner DSA course"
+status: in-progress
+scheduled_days: ["mon","tue","wed","thu","fri"]
+started: 2026-09-01
+target_date: 2026-10-15
+updated: 2026-09-15
+---
+Started at 30/35 lessons already done from a prior attempt. Goal this
+time is to actually retain the patterns, not just finish the
+checklist — see logs for daily reflections.
+```
+
+## Task 1: streak calculation (no hardcoded schedule)
+Add `src/lib/streaks.ts` (pure functions, no Astro dependency):
+
+- `getScheduledDays(person, topic, goals)` — look up the goal matching
+  `person`+`topic` with `status: 'in-progress'` and read its
+  `scheduled_days`. If no matching goal or no `scheduled_days` set,
+  treat every day as scheduled (fall back to "any day counts") rather
+  than guessing or hardcoding a default pattern.
+- `calculateStreak(entries, goals, person, topic)` — walk backward
+  from today over that topic's scheduled days only. A scheduled day
+  counts if there's a `completed` or `excused` entry for it. A
+  scheduled day with no entry breaks the streak. Non-scheduled days
+  are skipped, not counted either way. Return
+  `{ current: number, longest: number }`.
+- Test cases: an excused day mid-streak (must NOT break it), a
+  genuinely missed scheduled day (must break it), a goal with no
+  `scheduled_days` (every day should count), and two different topics
+  for the same person with different schedules (must not bleed into
+  each other).
+
+## Task 2: calendar view (`[person]/calendar.astro`)
+GitHub-contributions-style heatmap, filterable by topic (topics come
+from that person's own `logs`/`goals` entries — populate the filter
+dynamically, never from a static list). Four visually distinct states
+per day:
+- **Completed** — filled, intensity scaled by `minutes`
+- **Excused** — a genuinely different fill (different hue or pattern,
+  not just a lighter "completed") with the reason visible on hover/tap
+- **Missed** — clearly empty/flagged
+- **Not scheduled** — muted/near-transparent, shouldn't visually
+  compete with the other three
+
+Show current + longest streak per topic near the top, from
+`calculateStreak`.
+
+## Task 3: goals board (`[person]/goals.astro`)
+Show each person's goals grouped or filterable by `status`
+(pending / in-progress / achieved / cancelled). For each goal, show
+title, topic, status, started/target dates if set, and render the
+markdown body (the running notes). Achieved and cancelled goals should
+stay visible (maybe collapsed by default) rather than disappearing —
+the point is to see follow-through over time, including goals that
+didn't pan out.
+
+Also surface goals on `stats.astro`: a small per-person summary count
+by status (e.g. "2 in progress, 1 achieved, 1 cancelled").
+
+## Conventions
+- Keep all non-presentational logic (streak math, schedule resolution,
+  status grouping) in `src/lib/`, not inline in `.astro` files.
+- Never introduce a hardcoded topic list or hardcoded day-of-week
+  schedule anywhere — if you find yourself writing one, the data
+  should come from `goals` instead.
+- Match the existing site's visual style — check `Base.astro` and any
+  global CSS before inventing new colors, especially for the four
+  calendar states.
+
+## Definition of done
+- Schema validates both log entry types, with `.refine` catching
+  malformed completed/excused entries.
+- `example-person` exists with realistic log + goal examples and is
+  kept as the onboarding template, not deleted.
+- Streak calculation has test coverage for the four cases above,
+  entirely goal-driven with no hardcoded schedule.
+- Calendar renders all four day-states distinctly, filterable by topic
+  with topics populated dynamically.
+- Goals board shows all four statuses, including achieved/cancelled,
+  and rolls up into `stats.astro`.
