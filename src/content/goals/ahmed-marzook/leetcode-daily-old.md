@@ -1,5 +1,5 @@
 ---
-person: ahmed
+person: ahmed-marzook
 topic: dsa
 title: "LeetCode daily challenge streak"
 status: cancelled

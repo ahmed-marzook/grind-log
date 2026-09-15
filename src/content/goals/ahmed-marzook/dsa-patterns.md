@@ -1,5 +1,5 @@
 ---
-person: ahmed
+person: ahmed-marzook
 topic: dsa
 title: "Drill core DSA patterns to interview-ready fluency"
 status: in-progress
