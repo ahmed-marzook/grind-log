@@ -62,11 +62,13 @@ src/
         ...
   layouts/Base.astro
   pages/
-    index.astro         — chronological feed of all entries, everyone
-    [person]/index.astro — per-person entry list
+    index.astro           — dashboard: one card per person, click through
+    [person]/index.astro   — person detail hub: recent entries, links
+                              to that person's calendar and goals
     [person]/calendar.astro — per-person heatmap calendar
     [person]/goals.astro    — per-person goals board
-    stats.astro          — totals + streaks across everyone
+    stats.astro            — full cross-person table (secondary/detail
+                              view, not the landing page)
 ```
 
 `example-person` is a living template, not a demo to delete — every
@@ -219,6 +221,33 @@ didn't pan out.
 Also surface goals on `stats.astro`: a small per-person summary count
 by status (e.g. "2 in progress, 1 achieved, 1 cancelled").
 
+## Task 4: dashboard landing page (`index.astro`)
+The home page is the entry point, not a raw feed — it's a grid of
+per-person cards. Each card is a link (whole card clickable, not just
+a small "view" button) to that person's `[person]/index.astro` hub.
+
+Each card shows, at a glance:
+- Person name
+- **Today's status** — resolved per their scheduled goals for today:
+  completed / excused / missed / nothing scheduled today. Reuse the
+  same day-state logic from Task 1/2, don't reimplement it.
+- **Current streak** — if they have more than one topic, show the
+  longest-running current streak rather than every topic's number;
+  the card is a summary, not the full picture (that's what clicking
+  through is for).
+- **Goals summary** — a small count by status, e.g. "2 in progress,
+  1 achieved" (same data as the `stats.astro` rollup — pull from the
+  same source, don't duplicate the aggregation logic in two places).
+
+Cards should still make sense for a person with zero entries yet
+(e.g. someone who just onboarded via the `example-person` template
+pattern) — don't let the card layout break or show `NaN`/`undefined`
+on empty data; show something like "no entries yet."
+
+The `[person]/index.astro` hub it links to should show: recent entries
+(most recent first, reasonable limit e.g. last 10), and clear links
+into that person's `calendar.astro` and `goals.astro`.
+
 ## Conventions
 - Keep all non-presentational logic (streak math, schedule resolution,
   status grouping) in `src/lib/`, not inline in `.astro` files.
@@ -240,3 +269,7 @@ by status (e.g. "2 in progress, 1 achieved, 1 cancelled").
   with topics populated dynamically.
 - Goals board shows all four statuses, including achieved/cancelled,
   and rolls up into `stats.astro`.
+- Dashboard (`index.astro`) shows one clickable card per person with
+  today's status, current streak, and goals summary, handles a
+  zero-entry person gracefully, and clicking through lands on that
+  person's hub page.
