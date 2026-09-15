@@ -2,7 +2,13 @@
 import { getCollection } from 'astro:content';
 import Base from '../../layouts/Base.astro';
 import PersonNav from '../../components/PersonNav.astro';
-import { buildCalendarDays, getPersonTopics, type CalendarDay } from '../../lib/calendar.js';
+import {
+  buildCalendarDays,
+  formatDayTooltip,
+  getPersonTopics,
+  levelForMinutes,
+  padCalendarDaysForGrid,
+} from '../../lib/calendar.js';
 import { getAllPersons } from '../../lib/people.js';
 import { calculateStreak } from '../../lib/streaks.js';
 import type { Goal, LogEntry } from '../../lib/streaks.js';
@@ -45,41 +51,11 @@ function earliestFor(topic: string): Date {
   return new Date(Math.min(...candidates.map((d) => d.getTime())));
 }
 
-function level(minutes: number | undefined): 1 | 2 | 3 | 4 {
-  if (minutes == null) return 1;
-  if (minutes < 20) return 1;
-  if (minutes < 40) return 2;
-  if (minutes < 60) return 3;
-  return 4;
-}
-
-function tooltip(day: CalendarDay): string {
-  switch (day.state) {
-    case 'completed':
-      return `${day.date}: ${day.title} (${day.minutes} min)`;
-    case 'excused':
-      return `${day.date}: Excused — ${day.reason}`;
-    case 'missed':
-      return `${day.date}: Missed`;
-    default:
-      return `${day.date}: Not scheduled`;
-  }
-}
-
-// Pad the front of the grid so the first real day lands in its correct
-// weekday column, then render flat — with grid-auto-flow: column and 7
-// explicit rows, a flat array fills column-major, i.e. week by week.
-function padForGrid(days: CalendarDay[]): (CalendarDay | null)[] {
-  if (days.length === 0) return [];
-  const firstDow = new Date(`${days[0].date}T00:00:00.000Z`).getUTCDay();
-  return [...Array(firstDow).fill(null), ...days];
-}
-
 const topicData = topics.map((topic) => {
   const from = earliestFor(topic);
   const days = buildCalendarDays(entries, goals, person, topic, { from, to: today });
   const streak = calculateStreak(entries, goals, person, topic, today);
-  return { topic, days: padForGrid(days), streak };
+  return { topic, days: padCalendarDaysForGrid(days), streak };
 });
 ---
 
@@ -116,8 +92,8 @@ const topicData = topics.map((topic) => {
                 ) : (
                   <div
                     class={`day day--${day.state}`}
-                    data-level={day.state === 'completed' ? level(day.minutes) : undefined}
-                    title={tooltip(day)}
+                    data-level={day.state === 'completed' ? levelForMinutes(day.minutes) : undefined}
+                    title={formatDayTooltip(day)}
                   />
                 )
               )}
