@@ -52,13 +52,17 @@ src/
       example-person/
         2026-09-15.md      — a completed entry
         2026-09-20.md      — an excused entry
-      ahmed/
+      ahmed-marzook/
+        ...
+      shakahwath-hussain/
         ...
     goals/
       example-person/
         neetcode-beginner.md
         claude-cert.md
-      ahmed/
+      ahmed-marzook/
+        ...
+      shakahwath-hussain/
         ...
   layouts/Base.astro
   pages/
@@ -76,6 +80,27 @@ new person copies that folder pattern (one `logs/<name>/` folder, one
 `goals/<name>/` folder) to onboard themselves. Keep its example entries
 realistic and keep them in the repo permanently so the pattern is
 always discoverable by example, not just by reading this file.
+
+### Onboarding a new person
+1. Pick a lowercase, hyphenated slug for `<name>` (e.g. `jane-doe`) —
+   this exact string is the `person` value used everywhere (frontmatter,
+   the `[person]` URL param, dashboard cards), so keep it URL-safe. Don't
+   use a display name with spaces/capitals here — there is no separate
+   display-name field, the slug is shown as-is.
+2. Create `src/content/goals/<name>/` with at least one goal file
+   (`person: <name>`, a real `topic`, `title`, `status`, and `updated`).
+   A person only shows up on the dashboard once they have at least one
+   log or goal entry, so this is the minimum needed to onboard — it's
+   fine to start with a single `pending` goal and no `scheduled_days`
+   (see `goals/example-person/claude-cert.md`) before a real schedule
+   is picked.
+3. Create `src/content/logs/<name>/` as entries get logged day to day
+   (`person: <name>`, one file per date). Not required on day one — a
+   zero-entry person still renders correctly everywhere.
+4. Don't touch any code — topics, schedules, and the person list are
+   all derived from these files (`getAllPersons`, `getScheduledDays`).
+   If onboarding ever requires a code change, something is hardcoded
+   that shouldn't be.
 
 ## Schema (src/content/config.ts)
 

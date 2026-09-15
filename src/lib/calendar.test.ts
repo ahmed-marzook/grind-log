@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { buildCalendarDays, getPersonTopics } from './calendar.js';
+import {
+  buildCalendarDays,
+  formatDayTooltip,
+  getPersonTopics,
+  levelForMinutes,
+  padCalendarDaysForGrid,
+  type CalendarDay,
+} from './calendar.js';
 import type { Goal, LogEntry } from './streaks.js';
 
 function entry(date: string, overrides: Partial<LogEntry> = {}): LogEntry {
@@ -60,5 +67,54 @@ describe('buildCalendarDays', () => {
     expect(byDate['2026-09-15'].state).toBe('missed');
     expect(byDate['2026-09-16'].state).toBe('excused');
     expect(byDate['2026-09-16'].reason).toBe('sick');
+  });
+});
+
+describe('levelForMinutes', () => {
+  it('buckets minutes into four intensity levels', () => {
+    expect(levelForMinutes(undefined)).toBe(1);
+    expect(levelForMinutes(10)).toBe(1);
+    expect(levelForMinutes(20)).toBe(2);
+    expect(levelForMinutes(40)).toBe(3);
+    expect(levelForMinutes(60)).toBe(4);
+  });
+});
+
+describe('formatDayTooltip', () => {
+  const base: CalendarDay = { date: '2026-09-14', state: 'completed' };
+
+  it('describes a completed day with title and minutes', () => {
+    expect(formatDayTooltip({ ...base, title: 'Trie', minutes: 40 })).toBe(
+      '2026-09-14: Trie (40 min)'
+    );
+  });
+
+  it('describes an excused day with its reason', () => {
+    expect(formatDayTooltip({ ...base, state: 'excused', reason: 'sick' })).toBe(
+      '2026-09-14: Excused — sick'
+    );
+  });
+
+  it('describes a missed day', () => {
+    expect(formatDayTooltip({ ...base, state: 'missed' })).toBe('2026-09-14: Missed');
+  });
+
+  it('describes a not-scheduled day', () => {
+    expect(formatDayTooltip({ ...base, state: 'not-scheduled' })).toBe(
+      '2026-09-14: Not scheduled'
+    );
+  });
+});
+
+describe('padCalendarDaysForGrid', () => {
+  it('pads the front so the first day lands in its weekday column', () => {
+    // 2026-09-16 is a Wednesday (weekday index 3)
+    const days: CalendarDay[] = [{ date: '2026-09-16', state: 'missed' }];
+    const padded = padCalendarDaysForGrid(days);
+    expect(padded).toEqual([null, null, null, days[0]]);
+  });
+
+  it('returns an empty array for no days', () => {
+    expect(padCalendarDaysForGrid([])).toEqual([]);
   });
 });

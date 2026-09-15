@@ -92,3 +92,42 @@ export function buildCalendarDays(
 
   return days;
 }
+
+/**
+ * Visual intensity bucket for a completed day's heatmap fill, scaled by
+ * minutes studied. Shared by every calendar-style view (full calendar,
+ * dashboard mini-calendar) so the same minutes always render the same
+ * shade.
+ */
+export function levelForMinutes(minutes: number | undefined): 1 | 2 | 3 | 4 {
+  if (minutes == null) return 1;
+  if (minutes < 20) return 1;
+  if (minutes < 40) return 2;
+  if (minutes < 60) return 3;
+  return 4;
+}
+
+/** Hover/tap text for a single calendar day, shared across calendar views. */
+export function formatDayTooltip(day: CalendarDay): string {
+  switch (day.state) {
+    case 'completed':
+      return `${day.date}: ${day.title} (${day.minutes} min)`;
+    case 'excused':
+      return `${day.date}: Excused — ${day.reason}`;
+    case 'missed':
+      return `${day.date}: Missed`;
+    default:
+      return `${day.date}: Not scheduled`;
+  }
+}
+
+/**
+ * Pads the front of a day sequence so the first real day lands in its
+ * correct weekday column. With `grid-auto-flow: column` and 7 explicit
+ * rows, the padded flat array fills column-major — i.e. week by week.
+ */
+export function padCalendarDaysForGrid(days: CalendarDay[]): (CalendarDay | null)[] {
+  if (days.length === 0) return [];
+  const firstDow = new Date(`${days[0].date}T00:00:00.000Z`).getUTCDay();
+  return [...Array(firstDow).fill(null), ...days];
+}

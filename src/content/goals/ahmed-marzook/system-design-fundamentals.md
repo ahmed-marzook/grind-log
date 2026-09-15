@@ -1,5 +1,5 @@
 ---
-person: ahmed
+person: ahmed-marzook
 topic: system-design
 title: "Build a working vocabulary of system design fundamentals"
 status: in-progress
