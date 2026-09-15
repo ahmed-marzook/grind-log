@@ -36,6 +36,11 @@ const overview = computeOverview(persons, entries, goals, today);
 const RECENT_ACTIVITY_LIMIT = 8;
 const recentActivity = buildRecentActivity(entries, RECENT_ACTIVITY_LIMIT, today);
 
+const goalsByPerson = persons.map((person) => ({
+  person,
+  personGoals: goals.filter((g) => g.person === person),
+}));
+
 // A card-sized peek, not the full calendar — just enough weeks to show
 // the shape of recent activity at a glance.
 const MINI_CALENDAR_WINDOW_DAYS = 28;
@@ -91,6 +96,39 @@ const cards = persons.map((person) => {
     </a>
   </div>
 
+  <section class="panel goals-overview-panel">
+    <h2 class="section-heading">Goals</h2>
+    {
+      goalsByPerson.every(({ personGoals }) => personGoals.length === 0) ? (
+        <p class="panel-empty">No goals set yet.</p>
+      ) : (
+        <ul class="goals-overview">
+          {goalsByPerson.map(({ person, personGoals }) => (
+            <li class="goals-overview-row">
+              <a class="goals-overview-person" href={`${base}${person}/goals`}>
+                {person}
+              </a>
+              {personGoals.length === 0 ? (
+                <span class="goals-overview-empty">No goals yet</span>
+              ) : (
+                <ul class="goals-overview-list">
+                  {personGoals.map((goal) => (
+                    <li>
+                      {goal.title}
+                      <span class={`goal-status-tag goal-status-tag--${goal.status}`}>
+                        {goal.status}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          ))}
+        </ul>
+      )
+    }
+  </section>
+
   <ul class="overview-grid">
     <li class="overview-card">
       <span class="overview-icon"><Icon name="lucide:clock" aria-hidden="true" /></span>
@@ -135,12 +173,28 @@ const cards = persons.map((person) => {
     </li>
   </ul>
 
-  <h2 class="section-heading">People</h2>
+  <div class="section-heading-row">
+    <h2 class="section-heading">People</h2>
+    {
+      cards.length > 0 && (
+        <div class="view-toggle" role="group" aria-label="People view">
+          <button type="button" class="view-toggle-btn" data-view-btn="grid" aria-pressed="true">
+            <Icon name="lucide:layout-grid" class="icon-inline" aria-hidden="true" />
+            Columns
+          </button>
+          <button type="button" class="view-toggle-btn" data-view-btn="list" aria-pressed="false">
+            <Icon name="lucide:rows-3" class="icon-inline" aria-hidden="true" />
+            Rows
+          </button>
+        </div>
+      )
+    }
+  </div>
   {
     cards.length === 0 ? (
       <p>No one has started logging yet.</p>
     ) : (
-      <ul class="card-grid">
+      <ul class="card-grid" id="people-grid" data-view="grid">
         {cards.map(
           ({
             person,
@@ -325,6 +379,42 @@ const cards = persons.map((person) => {
   </div>
 </Base>
 
+<script>
+  const STORAGE_KEY = 'grind-log:people-view';
+  const grid = document.querySelector<HTMLUListElement>('#people-grid');
+  const buttons = document.querySelectorAll<HTMLButtonElement>('[data-view-btn]');
+
+  function applyView(view: string) {
+    if (!grid) return;
+    grid.dataset.view = view;
+    for (const button of buttons) {
+      button.setAttribute('aria-pressed', String(button.dataset.viewBtn === view));
+    }
+  }
+
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored === 'grid' || stored === 'list') {
+      applyView(stored);
+    }
+  } catch {
+    // Private browsing / blocked storage — fall back to the default view.
+  }
+
+  for (const button of buttons) {
+    button.addEventListener('click', () => {
+      const view = button.dataset.viewBtn ?? 'grid';
+      applyView(view);
+      try {
+        localStorage.setItem(STORAGE_KEY, view);
+      } catch {
+        // Private browsing / blocked storage — the toggle still works,
+        // it just won't be remembered next visit.
+      }
+    });
+  }
+</script>
+
 <style>
   .dash-header {
     display: flex;
@@ -363,6 +453,58 @@ const cards = persons.map((person) => {
   .icon-btn {
     width: 16px;
     height: 16px;
+  }
+
+  .goals-overview-panel {
+    margin-bottom: 1.5rem;
+  }
+  .goals-overview {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+  }
+  .goals-overview-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.4rem 0.75rem;
+    font-size: 0.9rem;
+  }
+  .goals-overview-person {
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+  }
+  .goals-overview-empty {
+    color: var(--text-dim);
+  }
+  .goals-overview-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 0.9rem;
+    color: var(--text-dim);
+  }
+  .goal-status-tag {
+    margin-left: 0.35rem;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--text-dim);
+  }
+  .goal-status-tag--in-progress {
+    color: var(--accent);
+  }
+  .goal-status-tag--achieved {
+    color: #3fb950;
+  }
+  .goal-status-tag--cancelled {
+    color: var(--missed-border);
   }
 
   .overview-grid {
@@ -432,6 +574,41 @@ const cards = persons.map((person) => {
     margin: 0 0 0.9rem;
   }
 
+  .section-heading-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .view-toggle {
+    display: inline-flex;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 2px;
+    margin-bottom: 0.9rem;
+  }
+  .view-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    border: none;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 0.8rem;
+    padding: 0.35rem 0.6rem;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .view-toggle-btn:hover {
+    color: var(--text);
+  }
+  .view-toggle-btn[aria-pressed='true'] {
+    background: var(--surface);
+    color: var(--text);
+  }
+
   .card-grid {
     list-style: none;
     padding: 0;
@@ -439,6 +616,42 @@ const cards = persons.map((person) => {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
     gap: 1rem;
+  }
+  .card-grid[data-view='list'] {
+    grid-template-columns: 1fr;
+  }
+  .card-grid[data-view='list'] .person-card {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.85rem 1.5rem;
+  }
+  .card-grid[data-view='list'] .card-top {
+    flex: 0 0 auto;
+    min-width: 9rem;
+  }
+  .card-grid[data-view='list'] .card-streak,
+  .card-grid[data-view='list'] .card-recent,
+  .card-grid[data-view='list'] .card-goals,
+  .card-grid[data-view='list'] .mini-calendar-block {
+    margin: 0;
+  }
+  .card-grid[data-view='list'] .card-actions {
+    margin-left: auto;
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+  }
+  @media (max-width: 640px) {
+    .card-grid[data-view='list'] .person-card {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .card-grid[data-view='list'] .card-actions {
+      margin-left: 0;
+      padding-top: 0.75rem;
+      border-top: 1px solid var(--border);
+    }
   }
   .person-card {
     position: relative;
