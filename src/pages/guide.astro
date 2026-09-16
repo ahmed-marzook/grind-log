@@ -1,0 +1,202 @@
+---
+import { getCollection } from 'astro:content';
+import Base from '../layouts/Base.astro';
+import { getAllPersons } from '../lib/people.js';
+
+const logs = await getCollection('logs');
+const goals = await getCollection('goals');
+const persons = getAllPersons(logs.map((l) => l.data), goals.map((g) => g.data));
+const base = import.meta.env.BASE_URL;
+---
+
+<Base title="Logging guide">
+  <h1>How to log a session</h1>
+  <p class="lede">
+    Every entry is a markdown file with frontmatter, one file per topic per date. There's no app
+    to sign into — the <a href={`${base}onboarding`}>Log today form</a> on your hub page just
+    builds that file for you and hands you off to GitHub to commit it.
+  </p>
+
+  {
+    persons.length > 0 && (
+      <form class="jump-form">
+        <label>
+          <span>Jump to your Log today form</span>
+          <select name="person">
+            <option value="" disabled selected>
+              Choose a person
+            </option>
+            {persons.map((person) => (
+              <option value={person}>{person}</option>
+            ))}
+          </select>
+        </label>
+        <button type="submit" class="btn btn--secondary">Go</button>
+      </form>
+    )
+  }
+
+  <section class="guide-section">
+    <h2>The two statuses</h2>
+    <div class="status-grid">
+      <div class="status-card status-card--completed">
+        <h3>Completed</h3>
+        <p>You studied that day. Requires:</p>
+        <ul>
+          <li><strong>Topic</strong> — free text, up to 40 characters (e.g. <code>dsa</code>, <code>python</code>).</li>
+          <li><strong>Title</strong> — what the session covered, up to 120 characters.</li>
+          <li><strong>Minutes</strong> — a whole number from 1 to 480 (8 hours).</li>
+        </ul>
+      </div>
+      <div class="status-card status-card--excused">
+        <h3>Excused</h3>
+        <p>You didn't study, but it doesn't break your streak. Requires:</p>
+        <ul>
+          <li><strong>Reason</strong> — free text, up to 200 characters.</li>
+        </ul>
+        <p class="status-note">
+          Excused entries don't carry a topic — they cover whichever topic's streak you're
+          looking at that day.
+        </p>
+      </div>
+    </div>
+    <p class="status-note">
+      No entry at all for a scheduled day = <strong>missed</strong>, no excuse. That's the only
+      way to break a streak.
+    </p>
+  </section>
+
+  <section class="guide-section">
+    <h2>Notes (optional)</h2>
+    <p>
+      Anything below the frontmatter — up to ~1000 characters via the form — is a free-text
+      journal note. It shows up on your hub page under the entry. Skip it if you've got nothing
+      to add.
+    </p>
+  </section>
+
+  <section class="guide-section">
+    <h2>Logging more than one topic in a day</h2>
+    <p>
+      There's no <code>topics: []</code> list — instead, log one <code>completed</code> file per
+      topic, all sharing the same date. Streaks, the calendar, and the dashboard all read
+      per-topic, so same-day entries for different topics never collide. The form always names
+      the file <code>&lt;date&gt;-&lt;topic&gt;.md</code> (e.g. <code>2026-09-16-dsa.md</code> and{' '}
+      <code>2026-09-16-python.md</code>) so this works with zero extra steps — just fill in the
+      form again for the second topic.
+    </p>
+  </section>
+
+  <section class="guide-section">
+    <h2>What if I don't use the form?</h2>
+    <p>
+      The form is just a convenience — it builds the exact same file you'd write by hand. See{' '}
+      <code>src/content/config.ts</code> for the full schema, or copy an example from{' '}
+      <code>logs/example-person/</code> (a completed and an excused entry are both there) and
+      commit it directly.
+    </p>
+  </section>
+</Base>
+
+<script>
+  const form = document.querySelector<HTMLFormElement>('.jump-form');
+  form?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const select = form.querySelector<HTMLSelectElement>('select[name="person"]')!;
+    if (!select.value) return;
+    window.location.href = `${import.meta.env.BASE_URL}${select.value}/#log-today`;
+  });
+</script>
+
+<style>
+  .lede {
+    color: var(--text-dim);
+    max-width: 65ch;
+    margin: 0 0 1.5rem;
+  }
+  code {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.1rem 0.35rem;
+    font-size: 0.9em;
+  }
+  .jump-form {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.75rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.75rem;
+    flex-wrap: wrap;
+  }
+  .jump-form label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+  }
+  .jump-form select {
+    font: inherit;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.5rem 0.6rem;
+  }
+  .guide-section {
+    margin-bottom: 1.75rem;
+  }
+  .guide-section h2 {
+    font-size: 1.05rem;
+    margin: 0 0 0.75rem;
+  }
+  .guide-section p {
+    color: var(--text-dim);
+    max-width: 70ch;
+  }
+  .status-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+  }
+  .status-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--not-scheduled);
+    border-radius: 10px;
+    padding: 1rem 1.15rem;
+  }
+  .status-card--completed {
+    border-left-color: #26a641;
+  }
+  .status-card--excused {
+    border-left-color: var(--excused);
+  }
+  .status-card h3 {
+    margin: 0 0 0.4rem;
+  }
+  .status-card p {
+    margin: 0 0 0.5rem;
+    color: var(--text-dim);
+    font-size: 0.9rem;
+  }
+  .status-card ul {
+    margin: 0;
+    padding-left: 1.1rem;
+    color: var(--text-dim);
+    font-size: 0.9rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+  .status-note {
+    color: var(--text-dim);
+    font-size: 0.85rem;
+    margin: 0;
+  }
+</style>

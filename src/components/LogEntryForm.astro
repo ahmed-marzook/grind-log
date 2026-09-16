@@ -1,0 +1,253 @@
+---
+interface Props {
+  person: string;
+  topics: string[];
+  today: Date;
+}
+const { person, topics, today } = Astro.props;
+const dateKey = today.toISOString().slice(0, 10);
+const datalistId = `log-topic-options-${person}`;
+---
+
+<section class="panel log-today-panel" id="log-today">
+  <h2 class="section-heading">Log today · {dateKey}</h2>
+  <p class="panel-copy">
+    Fill this in, then finish the commit on GitHub — there's no backend, so
+    the file still has to land in the repo, but the fields below get baked
+    into it for you. See the <a href={`${import.meta.env.BASE_URL}guide`}>logging guide</a>
+    for what each field means and its limits.
+  </p>
+
+  <form class="log-form" data-person={person} data-date={dateKey}>
+    <fieldset class="log-form-status">
+      <legend class="sr-only">Status</legend>
+      <label class="log-status-option">
+        <input type="radio" name="status" value="completed" checked /> Completed
+      </label>
+      <label class="log-status-option">
+        <input type="radio" name="status" value="excused" /> Excused
+      </label>
+    </fieldset>
+
+    <div class="log-form-grid" data-fields="completed">
+      <label class="log-field">
+        <span>Topic</span>
+        <input
+          type="text"
+          name="topic"
+          list={datalistId}
+          maxlength="40"
+          required
+          placeholder="e.g. dsa"
+        />
+      </label>
+      <datalist id={datalistId}>
+        {topics.map((topic) => <option value={topic} />)}
+      </datalist>
+
+      <label class="log-field log-field--wide">
+        <span>Title</span>
+        <input
+          type="text"
+          name="title"
+          maxlength="120"
+          required
+          placeholder="What did you work on?"
+        />
+      </label>
+
+      <label class="log-field log-field--narrow">
+        <span>Minutes</span>
+        <input type="number" name="minutes" min="1" max="480" required placeholder="30" />
+      </label>
+    </div>
+
+    <div class="log-form-grid" data-fields="excused" hidden>
+      <label class="log-field log-field--wide">
+        <span>Reason</span>
+        <input type="text" name="reason" maxlength="200" placeholder="Why was today excused?" />
+      </label>
+    </div>
+
+    <label class="log-field">
+      <span>Notes <em>(optional)</em></span>
+      <textarea
+        name="notes"
+        maxlength="1000"
+        rows="3"
+        placeholder="Anything worth remembering"
+      ></textarea>
+    </label>
+
+    <div class="log-form-actions">
+      <button type="submit" class="btn btn--primary">Open prefilled file on GitHub</button>
+      <p class="log-form-error" role="alert" hidden></p>
+    </div>
+  </form>
+</section>
+
+<script>
+  import { buildLogEntryUrl } from '../lib/github.js';
+
+  for (const form of document.querySelectorAll<HTMLFormElement>('.log-form')) {
+    const person = form.dataset.person!;
+    const date = form.dataset.date!;
+    const statusRadios = form.querySelectorAll<HTMLInputElement>('input[name="status"]');
+    const completedFields = form.querySelector<HTMLElement>('[data-fields="completed"]')!;
+    const excusedFields = form.querySelector<HTMLElement>('[data-fields="excused"]')!;
+    const topicInput = form.querySelector<HTMLInputElement>('input[name="topic"]')!;
+    const titleInput = form.querySelector<HTMLInputElement>('input[name="title"]')!;
+    const minutesInput = form.querySelector<HTMLInputElement>('input[name="minutes"]')!;
+    const reasonInput = form.querySelector<HTMLInputElement>('input[name="reason"]')!;
+    const notesInput = form.querySelector<HTMLTextAreaElement>('textarea[name="notes"]')!;
+    const errorEl = form.querySelector<HTMLElement>('.log-form-error')!;
+
+    function currentStatus(): 'completed' | 'excused' {
+      const checked = form.querySelector<HTMLInputElement>('input[name="status"]:checked');
+      return checked?.value === 'excused' ? 'excused' : 'completed';
+    }
+
+    function syncFieldsForStatus() {
+      const isCompleted = currentStatus() === 'completed';
+      completedFields.hidden = !isCompleted;
+      excusedFields.hidden = isCompleted;
+      topicInput.required = isCompleted;
+      titleInput.required = isCompleted;
+      minutesInput.required = isCompleted;
+      reasonInput.required = !isCompleted;
+      errorEl.hidden = true;
+    }
+
+    for (const radio of statusRadios) {
+      radio.addEventListener('change', syncFieldsForStatus);
+    }
+    syncFieldsForStatus();
+
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      errorEl.hidden = true;
+
+      const status = currentStatus();
+      const minutes = Number(minutesInput.value);
+
+      if (status === 'completed') {
+        if (!topicInput.value.trim() || !titleInput.value.trim() || !minutesInput.value) {
+          errorEl.textContent = 'Fill in topic, title, and minutes before continuing.';
+          errorEl.hidden = false;
+          return;
+        }
+        if (!Number.isFinite(minutes) || minutes < 1 || minutes > 480) {
+          errorEl.textContent = 'Minutes must be between 1 and 480.';
+          errorEl.hidden = false;
+          return;
+        }
+      } else if (!reasonInput.value.trim()) {
+        errorEl.textContent = 'Add a reason for the excused day before continuing.';
+        errorEl.hidden = false;
+        return;
+      }
+
+      const url = buildLogEntryUrl({
+        person,
+        date,
+        status,
+        topic: topicInput.value.trim(),
+        title: titleInput.value.trim(),
+        minutes,
+        reason: reasonInput.value.trim(),
+        notes: notesInput.value.trim(),
+      });
+
+      window.open(url, '_blank', 'noopener');
+    });
+  }
+</script>
+
+<style>
+  .log-today-panel {
+    margin-bottom: 1.75rem;
+  }
+  .panel-copy a {
+    color: var(--accent);
+  }
+  .log-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+    margin-top: 0.75rem;
+  }
+  .log-form-status {
+    display: flex;
+    gap: 1.25rem;
+    border: none;
+    padding: 0;
+    margin: 0;
+  }
+  .log-status-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.9rem;
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  .log-form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 0.75rem;
+  }
+  .log-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+  }
+  .log-field--wide {
+    grid-column: span 2;
+  }
+  .log-field--narrow {
+    max-width: 8rem;
+  }
+  .log-field em {
+    font-style: normal;
+    color: var(--text-dim);
+  }
+  .log-field input,
+  .log-field textarea {
+    font: inherit;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.5rem 0.6rem;
+  }
+  .log-field textarea {
+    resize: vertical;
+  }
+  .log-field input:focus,
+  .log-field textarea:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+  .log-form-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+    flex-wrap: wrap;
+  }
+  .log-form-error {
+    margin: 0;
+    color: var(--missed-border);
+    font-size: 0.85rem;
+  }
+</style>

@@ -1,0 +1,220 @@
+---
+import Base from '../layouts/Base.astro';
+import { onboardingGuideUrl } from '../lib/github.js';
+
+const today = new Date().toISOString().slice(0, 10);
+---
+
+<Base title="Onboarding">
+  <h1>Onboarding a new person</h1>
+  <p class="lede">
+    There's no signup — you onboard by committing your own <code>logs/</code> and{' '}
+    <code>goals/</code> folders, the same way everyone else here did. The
+    <code>example-person</code> folders in the repo are a living template: copy their pattern
+    rather than inventing your own.
+  </p>
+
+  <ol class="steps">
+    <li class="step">
+      <h2>1. Pick a slug</h2>
+      <p>
+        A lowercase, hyphenated name (e.g. <code>jane-doe</code>) — this exact string is used
+        everywhere: frontmatter's <code>person</code> field, the URL, dashboard cards. There's no
+        separate display name, so keep it URL-safe and don't use spaces or capitals.
+      </p>
+    </li>
+
+    <li class="step">
+      <h2>2. Create your first goal file</h2>
+      <p>
+        A person only shows up on the dashboard once they have at least one log or goal entry —
+        one <code>pending</code> goal with no schedule yet is enough to start. Fill this in and
+        it'll open a prefilled file on GitHub for you to commit:
+      </p>
+
+      <form class="starter-form" data-updated={today}>
+        <label class="starter-field">
+          <span>Your slug</span>
+          <input
+            type="text"
+            name="person"
+            pattern="[a-z0-9]+(-[a-z0-9]+)*"
+            maxlength="40"
+            required
+            placeholder="jane-doe"
+          />
+        </label>
+        <label class="starter-field">
+          <span>Topic</span>
+          <input type="text" name="topic" maxlength="40" required placeholder="e.g. dsa" />
+        </label>
+        <label class="starter-field starter-field--wide">
+          <span>Goal title</span>
+          <input
+            type="text"
+            name="title"
+            maxlength="120"
+            required
+            placeholder="What are you working toward?"
+          />
+        </label>
+        <div class="starter-actions">
+          <button type="submit" class="btn btn--primary">Create goal file on GitHub</button>
+          <p class="starter-error" role="alert" hidden></p>
+        </div>
+      </form>
+
+      <p class="step-note">
+        See <code>goals/example-person/claude-cert.md</code> for what a schedule-less starter goal
+        looks like once committed.
+      </p>
+    </li>
+
+    <li class="step">
+      <h2>3. Log sessions as you go</h2>
+      <p>
+        Not required on day one — a zero-entry person still renders correctly everywhere. Once
+        you're ready, every person's hub page has a <strong>Log today</strong> form of its own; see
+        the <a href={`${import.meta.env.BASE_URL}guide`}>logging guide</a> for the full set of
+        fields, statuses, and limits.
+      </p>
+    </li>
+
+    <li class="step">
+      <h2>4. Don't touch any code</h2>
+      <p>
+        Topics, schedules, and the person list are all derived from your files — nothing is
+        hardcoded. If onboarding ever seems to require a code change, something's wrong with the
+        code, not your files.
+      </p>
+    </li>
+  </ol>
+
+  <p class="footer-note">
+    Full source: <a href={onboardingGuideUrl()} target="_blank" rel="noopener">CLAUDE.md</a>. Once
+    committed, your files live at <code>src/content/goals/&lt;your-slug&gt;/</code> and{' '}
+    <code>src/content/logs/&lt;your-slug&gt;/</code> in the repo.
+  </p>
+</Base>
+
+<script>
+  import { buildGoalEntryUrl } from '../lib/github.js';
+
+  const form = document.querySelector<HTMLFormElement>('.starter-form');
+  if (form) {
+    const updated = form.dataset.updated!;
+    const personInput = form.querySelector<HTMLInputElement>('input[name="person"]')!;
+    const topicInput = form.querySelector<HTMLInputElement>('input[name="topic"]')!;
+    const titleInput = form.querySelector<HTMLInputElement>('input[name="title"]')!;
+    const errorEl = form.querySelector<HTMLElement>('.starter-error')!;
+    const slugPattern = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      errorEl.hidden = true;
+
+      const person = personInput.value.trim();
+      const topic = topicInput.value.trim();
+      const title = titleInput.value.trim();
+
+      if (!slugPattern.test(person)) {
+        errorEl.textContent = 'Slug must be lowercase, hyphenated (e.g. jane-doe).';
+        errorEl.hidden = false;
+        return;
+      }
+      if (!topic || !title) {
+        errorEl.textContent = 'Fill in a topic and a goal title before continuing.';
+        errorEl.hidden = false;
+        return;
+      }
+
+      const url = buildGoalEntryUrl({ person, topic, title, updated });
+      window.open(url, '_blank', 'noopener');
+    });
+  }
+</script>
+
+<style>
+  .lede {
+    color: var(--text-dim);
+    max-width: 60ch;
+    margin: 0 0 1.75rem;
+  }
+  code {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.1rem 0.35rem;
+    font-size: 0.9em;
+  }
+  .steps {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+  .step {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.25rem;
+  }
+  .step h2 {
+    margin: 0 0 0.5rem;
+    font-size: 1.05rem;
+  }
+  .step p {
+    margin: 0 0 0.5rem;
+    color: var(--text-dim);
+  }
+  .step-note {
+    font-size: 0.85rem;
+  }
+  .starter-form {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+  }
+  .starter-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+  }
+  .starter-field--wide {
+    grid-column: 1 / -1;
+  }
+  .starter-field input {
+    font: inherit;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.5rem 0.6rem;
+  }
+  .starter-field input:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+  .starter-actions {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+    flex-wrap: wrap;
+  }
+  .starter-error {
+    margin: 0;
+    color: var(--missed-border);
+    font-size: 0.85rem;
+  }
+  .footer-note {
+    color: var(--text-dim);
+    font-size: 0.9rem;
+    margin-top: 0.5rem;
+  }
+</style>

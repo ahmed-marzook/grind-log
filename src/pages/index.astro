@@ -17,7 +17,7 @@ import {
   resolveTodayStatus,
 } from '../lib/dashboard.js';
 import { formatRelativeDay } from '../lib/format.js';
-import { newLogEntryUrl, onboardingGuideUrl, personLogsUrl, REPO_URL } from '../lib/github.js';
+import { personLogsUrl, REPO_URL } from '../lib/github.js';
 import { summarizeGoalsByStatus } from '../lib/goals.js';
 import { getAllPersons } from '../lib/people.js';
 import type { Goal, LogEntry } from '../lib/streaks.js';
@@ -77,7 +77,7 @@ const cards = persons.map((person) => {
     consistency,
     mostRecentEntry,
     logUrl: personLogsUrl(person),
-    newEntryUrl: newLogEntryUrl(person, today),
+    logTodayUrl: `${base}${person}/#log-today`,
   };
 });
 ---
@@ -167,8 +167,8 @@ const cards = persons.map((person) => {
       <span class="overview-icon"><Icon name="lucide:sparkles" aria-hidden="true" /></span>
       <span class="overview-label">New here?</span>
       <span class="overview-value overview-value--small">Onboard yourself</span>
-      <a class="overview-link" href={onboardingGuideUrl()} target="_blank" rel="noopener">
-        Copy the example-person folder <Icon name="lucide:external-link" class="icon-inline" aria-hidden="true" />
+      <a class="overview-link" href={`${base}onboarding`}>
+        Walk through onboarding <Icon name="lucide:arrow-right" class="icon-inline" aria-hidden="true" />
       </a>
     </li>
   </ul>
@@ -205,7 +205,7 @@ const cards = persons.map((person) => {
             consistency,
             mostRecentEntry,
             logUrl,
-            newEntryUrl,
+            logTodayUrl,
           }) => (
             <li>
               <div class={`person-card person-card--${todayStatus}`}>
@@ -299,7 +299,7 @@ const cards = persons.map((person) => {
                     <Icon name="lucide:github" class="icon-inline" aria-hidden="true" />
                     View logs
                   </a>
-                  <a class="card-action card-action--accent" href={newEntryUrl} target="_blank" rel="noopener">
+                  <a class="card-action card-action--accent" href={logTodayUrl}>
                     <Icon name="lucide:plus" class="icon-inline" aria-hidden="true" />
                     Log today
                   </a>
@@ -352,17 +352,16 @@ const cards = persons.map((person) => {
         <li>
           <Icon name="lucide:plus" class="icon-inline" aria-hidden="true" />
           <span>
-            Use a person card's <strong>Log today</strong> link above for a prefilled starter
-            file.
+            Use a person card's <strong>Log today</strong> link above to fill in a form, then
+            finish the commit on GitHub — see the <a href={`${base}guide`}>logging guide</a> for
+            what each field means.
           </span>
         </li>
         <li>
           <Icon name="lucide:book-open" class="icon-inline" aria-hidden="true" />
           <span>
-            <a href={onboardingGuideUrl()} target="_blank" rel="noopener">
-              Onboarding a new person
-            </a>{' '}
-            walks through adding a `logs/` and `goals/` folder for someone new.
+            <a href={`${base}onboarding`}>Onboarding a new person</a> walks through adding a{' '}
+            `logs/` and `goals/` folder for someone new.
           </span>
         </li>
         <li>
@@ -432,29 +431,6 @@ const cards = persons.map((person) => {
     color: var(--text-dim);
     font-size: 0.95rem;
   }
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.55rem 1rem;
-    border-radius: 8px;
-    font-size: 0.9rem;
-    font-weight: 600;
-    white-space: nowrap;
-  }
-  .btn--primary {
-    background: var(--accent);
-    color: #0b0d11;
-  }
-  .btn--primary:hover {
-    text-decoration: none;
-    filter: brightness(1.08);
-  }
-  .icon-btn {
-    width: 16px;
-    height: 16px;
-  }
-
   .goals-overview-panel {
     margin-bottom: 1.5rem;
   }
@@ -562,18 +538,6 @@ const cards = persons.map((person) => {
     align-items: center;
     gap: 0.3rem;
   }
-  .icon-inline {
-    width: 13px;
-    height: 13px;
-    flex-shrink: 0;
-    vertical-align: -1px;
-  }
-
-  .section-heading {
-    font-size: 1.05rem;
-    margin: 0 0 0.9rem;
-  }
-
   .section-heading-row {
     display: flex;
     flex-wrap: wrap;
@@ -851,18 +815,6 @@ const cards = persons.map((person) => {
     .bottom-grid {
       grid-template-columns: 1fr;
     }
-  }
-  .panel {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 1.25rem;
-  }
-  .panel-empty,
-  .panel-copy {
-    color: var(--text-dim);
-    font-size: 0.9rem;
-    margin: 0 0 0.75rem;
   }
   .activity-feed {
     list-style: none;
