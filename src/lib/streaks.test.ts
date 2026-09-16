@@ -114,4 +114,23 @@ describe('calculateStreak', () => {
     expect(systemDesign.current).toBe(0);
     expect(systemDesign.longest).toBe(1);
   });
+
+  it('tracks two topics logged on the same date independently', () => {
+    // Same person, same day, two separate entry files — one per topic —
+    // both scheduled every day of the week.
+    const goals = [goal({ topic: 'dsa' }), goal({ topic: 'python' })];
+    const entries: LogEntry[] = [
+      entry('2026-09-15', { topic: 'dsa' }),
+      entry('2026-09-15', { topic: 'python', title: 'list comprehensions' }),
+      entry('2026-09-16', { topic: 'dsa' }),
+      // python missed on 09-16 (today) — should not affect dsa's streak
+    ];
+
+    const dsa = calculateStreak(entries, goals, 'ahmed', 'dsa', TODAY);
+    const python = calculateStreak(entries, goals, 'ahmed', 'python', TODAY);
+
+    expect(dsa.current).toBe(2);
+    expect(python.current).toBe(0); // missed today, so the streak is broken
+    expect(python.longest).toBe(1);
+  });
 });

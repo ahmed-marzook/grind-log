@@ -2,6 +2,8 @@
 import { getCollection } from 'astro:content';
 import Base from '../../layouts/Base.astro';
 import PersonNav from '../../components/PersonNav.astro';
+import LogEntryForm from '../../components/LogEntryForm.astro';
+import { getPersonTopics } from '../../lib/calendar.js';
 import { getAllPersons } from '../../lib/people.js';
 
 export async function getStaticPaths() {
@@ -13,6 +15,12 @@ export async function getStaticPaths() {
 
 const { person } = Astro.params as { person: string };
 const logs = await getCollection('logs', (entry) => entry.data.person === person);
+const goals = await getCollection('goals', (entry) => entry.data.person === person);
+const topics = getPersonTopics(
+  person,
+  logs.map((l) => l.data),
+  goals.map((g) => g.data)
+);
 const sorted = [...logs].sort((a, b) => b.data.date.getTime() - a.data.date.getTime());
 
 const RECENT_ENTRIES_LIMIT = 10;
@@ -31,6 +39,7 @@ const recentWithNotes = await Promise.all(
 <Base title={person}>
   <h1>{person}</h1>
   <PersonNav person={person} active="entries" />
+  <LogEntryForm person={person} topics={topics} today={new Date()} />
   {recent.length === 0 && <p>No entries yet.</p>}
   <ul class="feed">
     {
