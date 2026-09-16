@@ -69,6 +69,33 @@ describe('buildCalendarDays', () => {
     expect(byDate['2026-09-16'].state).toBe('excused');
     expect(byDate['2026-09-16'].reason).toBe('sick');
   });
+
+  it('keeps same-day entries for different topics from colliding', () => {
+    const goals = [
+      goal({ topic: 'dsa' }),
+      goal({ topic: 'python' }),
+    ];
+    const entries: LogEntry[] = [
+      entry('2026-09-14', { topic: 'dsa', minutes: 30, title: 'Trie' }),
+      entry('2026-09-14', { topic: 'python', minutes: 45, title: 'Decorators' }),
+    ];
+
+    const dsaDays = buildCalendarDays(entries, goals, 'ahmed', 'dsa', {
+      from: new Date('2026-09-14T00:00:00.000Z'),
+      to: new Date('2026-09-14T00:00:00.000Z'),
+    });
+    const pythonDays = buildCalendarDays(entries, goals, 'ahmed', 'python', {
+      from: new Date('2026-09-14T00:00:00.000Z'),
+      to: new Date('2026-09-14T00:00:00.000Z'),
+    });
+
+    expect(dsaDays[0].state).toBe('completed');
+    expect(dsaDays[0].title).toBe('Trie');
+    expect(dsaDays[0].minutes).toBe(30);
+    expect(pythonDays[0].state).toBe('completed');
+    expect(pythonDays[0].title).toBe('Decorators');
+    expect(pythonDays[0].minutes).toBe(45);
+  });
 });
 
 describe('levelForMinutes', () => {

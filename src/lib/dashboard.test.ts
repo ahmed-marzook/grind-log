@@ -55,6 +55,18 @@ describe('resolveTodayStatus', () => {
     expect(resolveTodayStatus('ahmed', entries, goals, TODAY)).toBe('excused');
   });
 
+  it('reports completed when multiple topics are each logged today', () => {
+    const goals = [
+      goal({ topic: 'dsa', scheduled_days: ['mon', 'tue', 'wed', 'thu', 'fri'] }),
+      goal({ topic: 'python', scheduled_days: ['mon', 'tue', 'wed', 'thu', 'fri'] }),
+    ];
+    const entries = [
+      entry('2026-09-16', { topic: 'dsa' }),
+      entry('2026-09-16', { topic: 'python', title: 'decorators' }),
+    ];
+    expect(resolveTodayStatus('ahmed', entries, goals, TODAY)).toBe('completed');
+  });
+
   it('reports not-scheduled when no topic is scheduled for today', () => {
     const goals = [goal({ scheduled_days: ['sat', 'sun'] })];
     expect(resolveTodayStatus('ahmed', [], goals, TODAY)).toBe('not-scheduled');

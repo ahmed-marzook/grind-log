@@ -95,8 +95,14 @@ always discoverable by example, not just by reading this file.
    (see `goals/example-person/claude-cert.md`) before a real schedule
    is picked.
 3. Create `src/content/logs/<name>/` as entries get logged day to day
-   (`person: <name>`, one file per date). Not required on day one — a
-   zero-entry person still renders correctly everywhere.
+   (`person: <name>`, one file per topic per date). A day with a single
+   topic is just `<date>.md`; a day with more than one topic (e.g.
+   someone splitting a day between `dsa` and `python`) gets one file per
+   topic instead, e.g. `<date>-dsa.md` and `<date>-python.md` — the
+   filename doesn't matter beyond being unique, since streaks/calendar
+   are computed per person+topic from frontmatter, not from filenames.
+   Not required on day one — a zero-entry person still renders correctly
+   everywhere.
 4. Don't touch any code — topics, schedules, and the person list are
    all derived from these files (`getAllPersons`, `getScheduledDays`).
    If onboarding ever requires a code change, something is hardcoded
@@ -107,6 +113,15 @@ always discoverable by example, not just by reading this file.
 ### logs collection
 Topic is a free string — never an enum, never validated against a
 fixed list. Each person invents their own topic names.
+
+A person can study more than one topic on the same date — there's no
+`topics: string[]` field; instead, log one `completed` entry file per
+topic, all sharing the same `date`. Every place that reads log entries
+(`calculateStreak`, `buildCalendarDays`, the dashboard, the person hub
+feed) already filters/aggregates by `person`+`topic` independently, so
+same-date entries for different topics never collide — see
+`goals/example-person/` and `logs/example-person/2026-09-16-*.md` for
+a worked example.
 
 ```typescript
 const logs = defineCollection({
