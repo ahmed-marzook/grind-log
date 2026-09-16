@@ -31,7 +31,7 @@ const goals = defineCollection({
     person: z.string(),
     topic: z.string(),
     title: z.string(),
-    status: z.enum(['pending', 'in-progress', 'achieved', 'cancelled']),
+    status: z.enum(['pending', 'in-progress', 'achieved', 'cancelled', 'idea']),
     scheduled_days: z
       .array(z.enum(['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']))
       .optional(),

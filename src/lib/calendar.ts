@@ -26,7 +26,10 @@ function dayAbbrev(date: Date) {
 
 /**
  * Topics a person actually uses, drawn from their own logs and goals —
- * never a static list — for populating a filter dynamically.
+ * never a static list — for populating a filter dynamically. `idea`
+ * goals are excluded: they're a future wishlist, not something being
+ * tracked yet, so they shouldn't spawn a topic that shows up as
+ * permanently "missed" on the calendar.
  */
 export function getPersonTopics(person: string, entries: LogEntry[], goals: Goal[]): string[] {
   const topics = new Set<string>();
@@ -34,7 +37,7 @@ export function getPersonTopics(person: string, entries: LogEntry[], goals: Goal
     if (entry.person === person && entry.topic) topics.add(entry.topic);
   }
   for (const goal of goals) {
-    if (goal.person === person) topics.add(goal.topic);
+    if (goal.person === person && goal.status !== 'idea') topics.add(goal.topic);
   }
   return Array.from(topics).sort();
 }

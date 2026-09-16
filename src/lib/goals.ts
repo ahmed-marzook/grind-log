@@ -3,12 +3,12 @@ import type { Goal } from './streaks.js';
 export type GoalStatus = Goal['status'];
 
 /**
- * Canonical display order for the four goal statuses. This is a fixed
- * property of the schema's own enum, not a per-person or per-topic
- * schedule — it never varies with the data, unlike topics or scheduled
- * days.
+ * Canonical display order for the four *tracked* goal statuses — `idea`
+ * is deliberately excluded. This is a fixed property of the schema's own
+ * enum, not a per-person or per-topic schedule — it never varies with the
+ * data, unlike topics or scheduled days.
  */
-export const STATUS_ORDER: readonly GoalStatus[] = [
+export const STATUS_ORDER: readonly Exclude<GoalStatus, 'idea'>[] = [
   'in-progress',
   'pending',
   'achieved',
@@ -22,7 +22,12 @@ export function groupBy<T, K extends string>(
 ): Record<K, T[]> {
   const grouped = Object.fromEntries(keys.map((key) => [key, [] as T[]])) as Record<K, T[]>;
   for (const item of items) {
-    grouped[keyFn(item)].push(item);
+    const key = keyFn(item);
+    // Items whose key isn't one of `keys` are skipped rather than
+    // throwing — lets callers group by a subset of a wider status enum
+    // (e.g. the four "active" goal statuses, leaving `idea` goals for a
+    // separate section) without pre-filtering first.
+    if (key in grouped) grouped[key].push(item);
   }
   return grouped;
 }
@@ -36,7 +41,7 @@ export function countBy<T, K extends string>(
   return Object.fromEntries(keys.map((key) => [key, grouped[key].length])) as Record<K, number>;
 }
 
-const STATUS_SUMMARY_LABEL: Record<GoalStatus, string> = {
+const STATUS_SUMMARY_LABEL: Record<Exclude<GoalStatus, 'idea'>, string> = {
   'in-progress': 'in progress',
   pending: 'pending',
   achieved: 'achieved',

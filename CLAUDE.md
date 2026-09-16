@@ -188,7 +188,7 @@ const goals = defineCollection({
     person: z.string(),
     topic: z.string(),
     title: z.string(),
-    status: z.enum(['pending', 'in-progress', 'achieved', 'cancelled']),
+    status: z.enum(['pending', 'in-progress', 'achieved', 'cancelled', 'idea']),
     scheduled_days: z.array(
       z.enum(['mon','tue','wed','thu','fri','sat','sun'])
     ).optional(),               // which days this goal expects activity
@@ -202,6 +202,14 @@ Body = free text: why this goal, what "done" looks like, running notes
 on progress. Since it's git-tracked, `git log` on a single goal file
 is itself a progress history — don't try to duplicate that as a
 separate changelog field.
+
+`idea` is a fifth status for a future goal that isn't committed to
+yet — a wishlist entry, not something being actively tracked. It's
+deliberately excluded from every status rollup (`STATUS_ORDER` in
+`src/lib/goals.ts`, the dashboard card summary, `stats.astro`) and
+from `getPersonTopics`, so it never shows up on the home page or
+starts counting as a "missed" day on the calendar. It only appears in
+its own "Future ideas" section on `[person]/goals.astro`.
 
 Example (`goals/example-person/neetcode-beginner.md`):
 ```markdown

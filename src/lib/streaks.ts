@@ -15,7 +15,7 @@ export interface Goal {
   person: string;
   topic: string;
   title: string;
-  status: 'pending' | 'in-progress' | 'achieved' | 'cancelled';
+  status: 'pending' | 'in-progress' | 'achieved' | 'cancelled' | 'idea';
   scheduled_days?: DayAbbrev[];
   started?: Date;
   target_date?: Date;

@@ -99,7 +99,7 @@ describe('buildLogEntryUrl', () => {
 });
 
 describe('buildGoalEntryUrl', () => {
-  it('builds a prefilled starter-goal new-file URL', () => {
+  it('builds a prefilled starter-goal new-file URL, defaulting to pending status', () => {
     const url = buildGoalEntryUrl({
       person: 'jane-doe',
       topic: 'System Design',
@@ -117,5 +117,43 @@ describe('buildGoalEntryUrl', () => {
     expect(value).toContain('title: "Learn system design basics"');
     expect(value).toContain('status: pending');
     expect(value).toContain('updated: 2026-09-16');
+    expect(value).not.toContain('scheduled_days:');
+    expect(value).not.toContain('started:');
+    expect(value).not.toContain('target_date:');
+  });
+
+  it('builds a full goal entry with schedule, dates, status, and notes', () => {
+    const url = buildGoalEntryUrl({
+      person: 'ahmed-marzook',
+      topic: 'rust',
+      title: 'Build a CLI tool',
+      status: 'in-progress',
+      scheduledDays: ['mon', 'wed', 'fri'],
+      started: '2026-09-16',
+      targetDate: '2026-12-01',
+      notes: 'Kicking off after the DSA course wraps.',
+      updated: '2026-09-16',
+    });
+
+    const value = new URL(url).searchParams.get('value')!;
+    expect(value).toContain('status: in-progress');
+    expect(value).toContain('scheduled_days: ["mon","wed","fri"]');
+    expect(value).toContain('started: 2026-09-16');
+    expect(value).toContain('target_date: 2026-12-01');
+    expect(value.trim().endsWith('Kicking off after the DSA course wraps.')).toBe(true);
+  });
+
+  it('builds an idea (future-wishlist) goal', () => {
+    const url = buildGoalEntryUrl({
+      person: 'ahmed-marzook',
+      topic: 'rust',
+      title: 'Build a CLI tool someday',
+      status: 'idea',
+      updated: '2026-09-16',
+    });
+
+    const value = new URL(url).searchParams.get('value')!;
+    expect(value).toContain('status: idea');
+    expect(value).not.toContain('scheduled_days:');
   });
 });

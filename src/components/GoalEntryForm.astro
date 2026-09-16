@@ -1,0 +1,248 @@
+---
+interface Props {
+  person: string;
+  topics: string[];
+}
+const { person, topics } = Astro.props;
+const today = new Date().toISOString().slice(0, 10);
+const datalistId = `goal-topic-options-${person}`;
+const DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
+---
+
+<section class="panel goal-form-panel" id="add-goal">
+  <h2 class="section-heading">Add a goal</h2>
+  <p class="panel-copy">
+    Fill this in, then finish the commit on GitHub — it works the same way as logging a
+    session: the fields below get baked into a starter file for you. Pick <strong>Future
+    idea</strong> for something you're not committing to yet — it shows up in the Future
+    ideas section below, not as an active goal.
+  </p>
+
+  <form class="goal-entry-form" data-person={person} data-updated={today}>
+    <div class="goal-entry-grid">
+      <label class="goal-entry-field">
+        <span>Topic</span>
+        <input
+          type="text"
+          name="topic"
+          list={datalistId}
+          maxlength="40"
+          required
+          placeholder="e.g. dsa"
+        />
+      </label>
+      <datalist id={datalistId}>
+        {topics.map((topic) => <option value={topic} />)}
+      </datalist>
+
+      <label class="goal-entry-field goal-entry-field--wide">
+        <span>Title</span>
+        <input
+          type="text"
+          name="title"
+          maxlength="120"
+          required
+          placeholder="What are you working toward?"
+        />
+      </label>
+
+      <label class="goal-entry-field">
+        <span>Status</span>
+        <select name="status">
+          <option value="pending" selected>Pending</option>
+          <option value="in-progress">In progress</option>
+          <option value="achieved">Achieved</option>
+          <option value="cancelled">Cancelled</option>
+          <option value="idea">Future idea</option>
+        </select>
+      </label>
+    </div>
+
+    <fieldset class="goal-entry-days" data-field="scheduled_days" hidden>
+      <legend>Scheduled days <em>(optional — every day counts if none are picked)</em></legend>
+      <div class="goal-entry-days-grid">
+        {
+          DAYS.map((day) => (
+            <label class="goal-entry-day">
+              <input type="checkbox" name="scheduled_days" value={day} />
+              {day}
+            </label>
+          ))
+        }
+      </div>
+    </fieldset>
+
+    <div class="goal-entry-grid">
+      <label class="goal-entry-field">
+        <span>Started <em>(optional)</em></span>
+        <input type="date" name="started" />
+      </label>
+      <label class="goal-entry-field">
+        <span>Target date <em>(optional)</em></span>
+        <input type="date" name="target_date" />
+      </label>
+    </div>
+
+    <label class="goal-entry-field">
+      <span>Notes <em>(optional)</em></span>
+      <textarea
+        name="notes"
+        maxlength="1000"
+        rows="3"
+        placeholder={'Why this goal, what "done" looks like'}
+      ></textarea>
+    </label>
+
+    <div class="goal-entry-actions">
+      <button type="submit" class="btn btn--primary">Open prefilled file on GitHub</button>
+      <p class="goal-entry-error" role="alert" hidden></p>
+    </div>
+  </form>
+</section>
+
+<script>
+  import { buildGoalEntryUrl, type GoalEntryDay, type GoalEntryStatus } from '../lib/github.js';
+
+  for (const form of document.querySelectorAll<HTMLFormElement>('.goal-entry-form')) {
+    const person = form.dataset.person!;
+    const updated = form.dataset.updated!;
+    const topicInput = form.querySelector<HTMLInputElement>('input[name="topic"]')!;
+    const titleInput = form.querySelector<HTMLInputElement>('input[name="title"]')!;
+    const statusSelect = form.querySelector<HTMLSelectElement>('select[name="status"]')!;
+    const daysFieldset = form.querySelector<HTMLElement>('[data-field="scheduled_days"]')!;
+    const dayCheckboxes = form.querySelectorAll<HTMLInputElement>('input[name="scheduled_days"]');
+    const startedInput = form.querySelector<HTMLInputElement>('input[name="started"]')!;
+    const targetDateInput = form.querySelector<HTMLInputElement>('input[name="target_date"]')!;
+    const notesInput = form.querySelector<HTMLTextAreaElement>('textarea[name="notes"]')!;
+    const errorEl = form.querySelector<HTMLElement>('.goal-entry-error')!;
+
+    // Scheduled days only mean something once a goal is actually being
+    // tracked day-to-day — hide the picker for every other status rather
+    // than let someone set a schedule on a pending or idea goal that
+    // nothing in the streak logic will ever read.
+    function syncFieldsForStatus() {
+      daysFieldset.hidden = statusSelect.value !== 'in-progress';
+      errorEl.hidden = true;
+    }
+    statusSelect.addEventListener('change', syncFieldsForStatus);
+    syncFieldsForStatus();
+
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      errorEl.hidden = true;
+
+      const topic = topicInput.value.trim();
+      const title = titleInput.value.trim();
+      if (!topic || !title) {
+        errorEl.textContent = 'Fill in a topic and a title before continuing.';
+        errorEl.hidden = false;
+        return;
+      }
+
+      const scheduledDays = daysFieldset.hidden
+        ? []
+        : (Array.from(dayCheckboxes)
+            .filter((box) => box.checked)
+            .map((box) => box.value) as GoalEntryDay[]);
+
+      const url = buildGoalEntryUrl({
+        person,
+        topic,
+        title,
+        status: statusSelect.value as GoalEntryStatus,
+        scheduledDays,
+        started: startedInput.value,
+        targetDate: targetDateInput.value,
+        notes: notesInput.value.trim(),
+        updated,
+      });
+
+      window.open(url, '_blank', 'noopener');
+    });
+  }
+</script>
+
+<style>
+  .goal-form-panel {
+    margin-bottom: 1.75rem;
+  }
+  .goal-entry-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+    margin-top: 0.75rem;
+  }
+  .goal-entry-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 0.75rem;
+  }
+  .goal-entry-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+  }
+  .goal-entry-field--wide {
+    grid-column: span 2;
+  }
+  .goal-entry-field em {
+    font-style: normal;
+    color: var(--text-dim);
+  }
+  .goal-entry-field input,
+  .goal-entry-field select,
+  .goal-entry-field textarea {
+    font: inherit;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.5rem 0.6rem;
+  }
+  .goal-entry-field textarea {
+    resize: vertical;
+  }
+  .goal-entry-field input:focus,
+  .goal-entry-field select:focus,
+  .goal-entry-field textarea:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+  .goal-entry-days {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.75rem;
+    margin: 0;
+  }
+  .goal-entry-days legend {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    padding: 0 0.3rem;
+  }
+  .goal-entry-days-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 0.4rem;
+  }
+  .goal-entry-day {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.85rem;
+    text-transform: capitalize;
+  }
+  .goal-entry-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+    flex-wrap: wrap;
+  }
+  .goal-entry-error {
+    margin: 0;
+    color: var(--missed-border);
+    font-size: 0.85rem;
+  }
+</style>
