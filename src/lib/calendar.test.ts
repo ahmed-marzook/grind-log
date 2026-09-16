@@ -44,6 +44,11 @@ describe('getPersonTopics', () => {
     const entries = [entry('2026-09-01', { person: 'someone-else', topic: 'other' })];
     expect(getPersonTopics('ahmed', entries, [])).toEqual([]);
   });
+
+  it('excludes idea-status goals — a future wishlist item is not a tracked topic yet', () => {
+    const goals = [goal({ topic: 'dsa' }), goal({ topic: 'rust', status: 'idea' })];
+    expect(getPersonTopics('ahmed', [], goals)).toEqual(['dsa']);
+  });
 });
 
 describe('buildCalendarDays', () => {

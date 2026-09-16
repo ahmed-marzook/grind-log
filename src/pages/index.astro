@@ -36,9 +36,11 @@ const overview = computeOverview(persons, entries, goals, today);
 const RECENT_ACTIVITY_LIMIT = 8;
 const recentActivity = buildRecentActivity(entries, RECENT_ACTIVITY_LIMIT, today);
 
+// `idea` goals are a future wishlist, not an active goal — they stay off
+// the home page (only the per-person goals page shows them).
 const goalsByPerson = persons.map((person) => ({
   person,
-  personGoals: goals.filter((g) => g.person === person),
+  personGoals: goals.filter((g) => g.person === person && g.status !== 'idea'),
 }));
 
 // A card-sized peek, not the full calendar — just enough weeks to show

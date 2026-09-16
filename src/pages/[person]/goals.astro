@@ -2,6 +2,8 @@
 import { getCollection } from 'astro:content';
 import Base from '../../layouts/Base.astro';
 import PersonNav from '../../components/PersonNav.astro';
+import GoalEntryForm from '../../components/GoalEntryForm.astro';
+import { getPersonTopics } from '../../lib/calendar.js';
 import { groupBy, STATUS_ORDER } from '../../lib/goals.js';
 import { getAllPersons } from '../../lib/people.js';
 
@@ -13,13 +15,20 @@ export async function getStaticPaths() {
 }
 
 const { person } = Astro.params as { person: string };
+const logs = await getCollection('logs', (entry) => entry.data.person === person);
 const goals = await getCollection('goals', (entry) => entry.data.person === person);
+const topics = getPersonTopics(
+  person,
+  logs.map((l) => l.data),
+  goals.map((g) => g.data)
+);
 
 const goalsWithContent = await Promise.all(
   goals.map(async (goal) => ({ goal, Content: (await goal.render()).Content }))
 );
 
 const grouped = groupBy(goalsWithContent, (item) => item.goal.data.status, STATUS_ORDER);
+const futureIdeas = goalsWithContent.filter((item) => item.goal.data.status === 'idea');
 
 const STATUS_LABEL: Record<(typeof STATUS_ORDER)[number], string> = {
   'in-progress': 'In progress',
@@ -40,6 +49,7 @@ function formatDate(date: Date): string {
 <Base title={`${person} · goals`}>
   <h1>{person}'s goals</h1>
   <PersonNav person={person} active="goals" />
+  <GoalEntryForm person={person} topics={topics} />
 
   {
     goalsWithContent.length === 0 ? (
@@ -76,6 +86,31 @@ function formatDate(date: Date): string {
           </details>
         );
       })
+    )
+  }
+
+  {
+    futureIdeas.length > 0 && (
+      <details class="status-group future-ideas-group" open>
+        <summary>Future ideas ({futureIdeas.length})</summary>
+        <p class="future-ideas-note">
+          Not committed to yet — no schedule, no streak tracking. Just things worth remembering
+          for later.
+        </p>
+        <ul class="goal-list">
+          {futureIdeas.map(({ goal, Content }) => (
+            <li class="goal-card goal-card--idea">
+              <div class="goal-header">
+                <h2>{goal.data.title}</h2>
+                <span class="goal-topic">{goal.data.topic}</span>
+              </div>
+              <div class="goal-body">
+                <Content />
+              </div>
+            </li>
+          ))}
+        </ul>
+      </details>
     )
   }
 </Base>
@@ -132,5 +167,18 @@ function formatDate(date: Date): string {
   }
   .goal-body :global(p:last-child) {
     margin-bottom: 0;
+  }
+  .future-ideas-group {
+    border-top: 1px dashed var(--border);
+    padding-top: 1rem;
+  }
+  .future-ideas-note {
+    margin: 0 0 0.75rem;
+    color: var(--text-dim);
+    font-size: 0.85rem;
+    font-style: italic;
+  }
+  .goal-card--idea {
+    border-style: dashed;
   }
 </style>

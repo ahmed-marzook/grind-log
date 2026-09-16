@@ -90,33 +90,49 @@ export function buildLogEntryUrl(input: LogEntryInput): string {
   return `${REPO_URL}/new/${BRANCH}/src/content/logs/${input.person}?${params.toString()}`;
 }
 
+export type GoalEntryStatus = 'pending' | 'in-progress' | 'achieved' | 'cancelled' | 'idea';
+export type GoalEntryDay = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
+
 export interface GoalEntryInput {
   person: string;
   topic: string;
   title: string;
+  status?: GoalEntryStatus; // defaults to 'pending'
+  scheduledDays?: GoalEntryDay[];
+  started?: string; // YYYY-MM-DD
+  targetDate?: string; // YYYY-MM-DD
+  notes?: string;
   updated: string; // YYYY-MM-DD
 }
 
-/** The markdown file body (frontmatter) for a starter goal file. */
+/** The markdown file body (frontmatter) for a goal file, any status. */
 export function buildGoalEntryContent(input: GoalEntryInput): string {
-  return [
+  const lines = [
     '---',
     `person: ${input.person}`,
     `topic: ${yamlString(input.topic)}`,
     `title: ${yamlString(input.title)}`,
-    'status: pending',
-    `updated: ${input.updated}`,
-    '---',
-    '',
-    '<!-- why this goal, what "done" looks like — a schedule can come later -->',
-    '',
-  ].join('\n');
+    `status: ${input.status ?? 'pending'}`,
+  ];
+  if (input.scheduledDays && input.scheduledDays.length > 0) {
+    lines.push(`scheduled_days: [${input.scheduledDays.map((d) => `"${d}"`).join(',')}]`);
+  }
+  if (input.started) lines.push(`started: ${input.started}`);
+  if (input.targetDate) lines.push(`target_date: ${input.targetDate}`);
+  lines.push(`updated: ${input.updated}`, '---', '');
+  lines.push(
+    input.notes?.trim() ||
+      '<!-- why this goal, what "done" looks like — a schedule can come later -->'
+  );
+  lines.push('');
+  return lines.join('\n');
 }
 
 /**
- * A GitHub "create new file" URL prefilled with a starter `pending` goal —
- * the minimum needed to onboard a new person (CLAUDE.md's "Onboarding a
- * new person" step 2).
+ * A GitHub "create new file" URL prefilled with a goal — covers every
+ * status a goal file can hold (including an `idea` future-wishlist entry,
+ * not just the onboarding starter `pending` goal), plus the optional
+ * schedule/date fields.
  */
 export function buildGoalEntryUrl(input: GoalEntryInput): string {
   const filename = `${slugify(input.topic)}.md`;
