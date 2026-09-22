@@ -206,35 +206,39 @@ const dataPayload = toScriptJson({ entries, goals });
     overflow-x: auto;
     padding-bottom: 0.5rem;
   }
-  .day {
+  /* :global() here — these classes are set on <div>s created with
+     document.createElement() by the client script below, which never get
+     Astro's scoped-style attribute, so a plain (scoped) selector would
+     silently never match them. */
+  :global(.day) {
     width: 12px;
     height: 12px;
     border-radius: 2px;
     box-sizing: border-box;
   }
-  .day--empty {
+  :global(.day--empty) {
     visibility: hidden;
   }
-  .day--not-scheduled {
+  :global(.day--not-scheduled) {
     background: var(--not-scheduled);
   }
-  .day--missed {
+  :global(.day--missed) {
     background: transparent;
     border: 1px solid var(--missed-border);
   }
-  .day--excused {
+  :global(.day--excused) {
     background: var(--excused);
   }
-  .day--completed[data-level='1'] {
+  :global(.day--completed[data-level='1']) {
     background: #0e4429;
   }
-  .day--completed[data-level='2'] {
+  :global(.day--completed[data-level='2']) {
     background: #006d32;
   }
-  .day--completed[data-level='3'] {
+  :global(.day--completed[data-level='3']) {
     background: #26a641;
   }
-  .day--completed[data-level='4'] {
+  :global(.day--completed[data-level='4']) {
     background: #39d353;
   }
   .legend {
