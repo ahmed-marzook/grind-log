@@ -27,7 +27,9 @@ const goals: Goal[] = (await getCollection('goals', (g) => g.data.person === per
 // is a statically-built site, so anything computed from `new Date()` here
 // would be frozen to build time and go stale between rebuilds. The
 // skeleton below is filled in (and kept correct) by the client script at
-// the bottom of this file instead, using the viewer's real clock.
+// the bottom of this file instead, using the viewer's real clock. The
+// heatmap itself (an ApexCharts chart) is client-rendered entirely —
+// there's no server-side render path for it.
 const topics = getPersonTopics(person, entries, goals);
 const dataPayload = toScriptJson({ entries, goals });
 ---
@@ -64,7 +66,7 @@ const dataPayload = toScriptJson({ entries, goals });
             <p class="streaks" data-streak-text>
               Loading streak…
             </p>
-            <div class="calendar-grid" data-calendar-grid aria-label={`${topic} activity`} />
+            <div class="calendar-chart" data-calendar-chart aria-label={`${topic} activity`} />
             <ul class="legend">
               <li>
                 <span class="swatch swatch--completed" /> Completed
@@ -89,13 +91,8 @@ const dataPayload = toScriptJson({ entries, goals });
 </Base>
 
 <script>
-  import {
-    buildCalendarDays,
-    formatDayTooltip,
-    levelForMinutes,
-    padCalendarDaysForGrid,
-    type CalendarDay,
-  } from '../../lib/calendar.js';
+  import ApexCharts from 'apexcharts';
+  import { buildCalendarDays, formatDayTooltip, levelForMinutes, type CalendarDay } from '../../lib/calendar.js';
   import { reviveGoals, reviveLogEntries } from '../../lib/serialize.js';
   import { calculateStreak } from '../../lib/streaks.js';
   import type { SerializedGoal, SerializedLogEntry } from '../../lib/serialize.js';
@@ -117,6 +114,42 @@ const dataPayload = toScriptJson({ entries, goals });
     // entries yet — just enough to show a non-empty grid, not a schedule.
     const DEFAULT_LOOKBACK_DAYS = 84;
 
+    // Day-state codes mapped to fixed colors via colorScale ranges below —
+    // a heatmap's color axis is normally a continuous scale, so each
+    // state (plus each completed intensity level) gets its own exact-value
+    // range rather than a gradient.
+    const CODE_PAD = -99;
+    const CODE_NOT_SCHEDULED = 0;
+    const CODE_MISSED = -1;
+    const CODE_EXCUSED = -2;
+    const CODE_COMPLETED_BASE = 0; // + levelForMinutes (1-4)
+
+    const style = getComputedStyle(document.documentElement);
+    const cssVar = (name: string) => style.getPropertyValue(name).trim();
+    const COLORS = {
+      pad: 'transparent',
+      notScheduled: cssVar('--not-scheduled') || '#20232b',
+      missed: cssVar('--missed-border') || '#f85149',
+      excused: cssVar('--excused') || '#d29922',
+      completed: ['#0e4429', '#006d32', '#26a641', '#39d353'],
+      text: cssVar('--text-dim') || '#9aa1ab',
+      border: cssVar('--border') || '#2a2e37',
+      surface: cssVar('--surface') || '#171a21',
+    };
+
+    function dayCode(day: CalendarDay | null): number {
+      if (day === null) return CODE_PAD;
+      if (day.state === 'not-scheduled') return CODE_NOT_SCHEDULED;
+      if (day.state === 'missed') return CODE_MISSED;
+      if (day.state === 'excused') return CODE_EXCUSED;
+      return CODE_COMPLETED_BASE + levelForMinutes(day.minutes);
+    }
+
+    const WEEKDAY_ROWS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const MONTH_ABBREV = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+
     function earliestFor(topic: string): Date {
       const goal = goals.find(
         (g) => g.person === person && g.topic === topic && g.status === 'in-progress'
@@ -136,24 +169,50 @@ const dataPayload = toScriptJson({ entries, goals });
       return new Date(Math.min(...candidates.map((d) => d.getTime())));
     }
 
-    function renderDay(day: CalendarDay | null): HTMLDivElement {
-      const el = document.createElement('div');
-      if (day === null) {
-        el.className = 'day day--empty';
-        return el;
+    // Pads the front so the first real day lands in its correct weekday
+    // row (row 0 = Sunday), matching WEEKDAY_ROWS, then reshapes into
+    // week-columns for the heatmap's 7-row x N-week layout.
+    function toWeekColumns(days: CalendarDay[]): (CalendarDay | null)[][] {
+      if (days.length === 0) return [];
+      const firstDow = new Date(`${days[0].date}T00:00:00.000Z`).getUTCDay();
+      const padded: (CalendarDay | null)[] = [...Array(firstDow).fill(null), ...days];
+      while (padded.length % 7 !== 0) padded.push(null);
+      const weeks: (CalendarDay | null)[][] = [];
+      for (let i = 0; i < padded.length; i += 7) {
+        weeks.push(padded.slice(i, i + 7));
       }
-      el.className = `day day--${day.state}`;
-      if (day.state === 'completed') {
-        el.dataset.level = String(levelForMinutes(day.minutes));
-      }
-      el.title = formatDayTooltip(day);
-      return el;
+      return weeks;
     }
 
-    for (const section of app.querySelectorAll<HTMLElement>('[data-topic-section]')) {
-      const topic = section.dataset.topicSection!;
+    function buildSeries(weeks: (CalendarDay | null)[][]) {
+      // Sparse month labels along the top, GitHub-style — only the first
+      // week of each month (and the very first column) gets a label. The
+      // heatmap reads each point's own `x` as its category label (a
+      // separate xaxis.categories array is ignored for this chart type),
+      // so the label has to travel with the data point itself.
+      let lastMonth = -1;
+      const columnLabels = weeks.map((week) => {
+        const firstRealDay = week.find((d) => d !== null);
+        if (!firstRealDay) return ' ';
+        const month = new Date(`${firstRealDay.date}T00:00:00.000Z`).getUTCMonth();
+        if (month !== lastMonth) {
+          lastMonth = month;
+          return MONTH_ABBREV[month];
+        }
+        return ' ';
+      });
+
+      return WEEKDAY_ROWS.map((name, row) => ({
+        name,
+        data: weeks.map((week, col) => ({ x: columnLabels[col], y: dayCode(week[row]) })),
+      }));
+    }
+
+    const charts = new Map<string, ApexCharts>();
+
+    function renderChart(section: HTMLElement, topic: string) {
+      const container = section.querySelector<HTMLElement>('[data-calendar-chart]')!;
       const streakText = section.querySelector<HTMLElement>('[data-streak-text]')!;
-      const grid = section.querySelector<HTMLElement>('[data-calendar-grid]')!;
 
       const from = earliestFor(topic);
       const days = buildCalendarDays(entries, goals, person, topic, { from, to: today });
@@ -170,17 +229,103 @@ const dataPayload = toScriptJson({ entries, goals });
         ' day longest streak'
       );
 
-      const padded = padCalendarDaysForGrid(days);
-      grid.replaceChildren(...padded.map(renderDay));
+      const weeks = toWeekColumns(days);
+      const series = buildSeries(weeks);
+
+      // seriesIndex/dataPointIndex from ApexCharts' tooltip callback map
+      // straight back to weeks[col][row] — the same shape the series/
+      // categories were built from — so the tooltip can show the real
+      // title/minutes/reason instead of just the numeric color code.
+      const chart = new ApexCharts(container, {
+        chart: {
+          type: 'heatmap',
+          height: 190,
+          background: 'transparent',
+          toolbar: { show: false },
+          fontFamily: 'inherit',
+          // A status dashboard, not a decorative chart — render settled
+          // and instantly rather than animating cells in.
+          animations: { enabled: false },
+        },
+        theme: { mode: 'dark' },
+        series,
+        xaxis: {
+          labels: { style: { colors: COLORS.text, fontSize: '11px' } },
+          axisBorder: { show: false },
+          axisTicks: { show: false },
+        },
+        yaxis: {
+          labels: { style: { colors: COLORS.text, fontSize: '11px' } },
+        },
+        grid: { show: false, padding: { left: 0, right: 0 } },
+        legend: { show: false },
+        dataLabels: { enabled: false },
+        stroke: { width: 3, colors: [COLORS.surface] },
+        plotOptions: {
+          heatmap: {
+            radius: 2,
+            // Each state is an exact single-value range, not a gradient —
+            // enableShades:false stops ApexCharts perturbing those colors
+            // by cell position, and ranges must be ascending by `from` or
+            // matching silently breaks.
+            enableShades: false,
+            colorScale: {
+              ranges: [
+                { from: CODE_PAD, to: CODE_PAD, color: COLORS.pad, name: 'padding' },
+                { from: CODE_EXCUSED, to: CODE_EXCUSED, color: COLORS.excused, name: 'Excused' },
+                { from: CODE_MISSED, to: CODE_MISSED, color: COLORS.missed, name: 'Missed' },
+                {
+                  from: CODE_NOT_SCHEDULED,
+                  to: CODE_NOT_SCHEDULED,
+                  color: COLORS.notScheduled,
+                  name: 'Not scheduled',
+                },
+                { from: 1, to: 1, color: COLORS.completed[0], name: 'Completed' },
+                { from: 2, to: 2, color: COLORS.completed[1], name: 'Completed' },
+                { from: 3, to: 3, color: COLORS.completed[2], name: 'Completed' },
+                { from: 4, to: 4, color: COLORS.completed[3], name: 'Completed' },
+              ],
+            },
+          },
+        },
+        tooltip: {
+          custom: ({ seriesIndex, dataPointIndex }: { seriesIndex: number; dataPointIndex: number }) => {
+            const day = weeks[dataPointIndex]?.[seriesIndex];
+            if (!day) return '';
+            const text = formatDayTooltip(day);
+            return `<div style="background:${COLORS.surface};border:1px solid ${COLORS.border};color:${COLORS.text};padding:6px 9px;border-radius:6px;font-size:12px;max-width:220px;">${escapeHtml(text)}</div>`;
+          },
+        },
+      });
+
+      chart.render();
+      charts.set(topic, chart);
+    }
+
+    function escapeHtml(text: string): string {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function ensureChartForTopic(topic: string) {
+      if (charts.has(topic)) return;
+      const section = app!.querySelector<HTMLElement>(`[data-topic-section="${CSS.escape(topic)}"]`);
+      if (section) renderChart(section, topic);
     }
 
     const select = document.querySelector<HTMLSelectElement>('#topic-select');
-    const sections = document.querySelectorAll<HTMLElement>('[data-topic-section]');
-    select?.addEventListener('change', () => {
-      for (const s of sections) {
-        s.hidden = s.dataset.topicSection !== select.value;
-      }
-    });
+    const sections = app.querySelectorAll<HTMLElement>('[data-topic-section]');
+
+    if (select) {
+      ensureChartForTopic(select.value);
+      select.addEventListener('change', () => {
+        for (const s of sections) {
+          s.hidden = s.dataset.topicSection !== select.value;
+        }
+        ensureChartForTopic(select.value);
+      });
+    }
   }
 </script>
 
@@ -198,48 +343,9 @@ const dataPayload = toScriptJson({ entries, goals });
   .streaks {
     margin: 0 0 1rem;
   }
-  .calendar-grid {
-    display: grid;
-    grid-auto-flow: column;
-    grid-template-rows: repeat(7, 1fr);
-    gap: 3px;
-    overflow-x: auto;
-    padding-bottom: 0.5rem;
-  }
-  /* :global() here — these classes are set on <div>s created with
-     document.createElement() by the client script below, which never get
-     Astro's scoped-style attribute, so a plain (scoped) selector would
-     silently never match them. */
-  :global(.day) {
-    width: 12px;
-    height: 12px;
-    border-radius: 2px;
-    box-sizing: border-box;
-  }
-  :global(.day--empty) {
-    visibility: hidden;
-  }
-  :global(.day--not-scheduled) {
-    background: var(--not-scheduled);
-  }
-  :global(.day--missed) {
-    background: transparent;
-    border: 1px solid var(--missed-border);
-  }
-  :global(.day--excused) {
-    background: var(--excused);
-  }
-  :global(.day--completed[data-level='1']) {
-    background: #0e4429;
-  }
-  :global(.day--completed[data-level='2']) {
-    background: #006d32;
-  }
-  :global(.day--completed[data-level='3']) {
-    background: #26a641;
-  }
-  :global(.day--completed[data-level='4']) {
-    background: #39d353;
+  .calendar-chart {
+    max-width: 900px;
+    margin-bottom: 0.5rem;
   }
   .legend {
     list-style: none;
@@ -269,8 +375,7 @@ const dataPayload = toScriptJson({ entries, goals });
     background: var(--excused);
   }
   .swatch--missed {
-    background: transparent;
-    border: 1px solid var(--missed-border);
+    background: var(--missed-border);
   }
   .swatch--not-scheduled {
     background: var(--not-scheduled);
