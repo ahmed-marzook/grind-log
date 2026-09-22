@@ -3,7 +3,7 @@ import { getCollection } from 'astro:content';
 import { Icon } from 'astro-icon/components';
 import Base from '../layouts/Base.astro';
 import {
-  buildCalendarDays,
+  buildOverallCalendarDays,
   consistencyForWindow,
   formatDayTooltip,
   levelForMinutes,
@@ -12,8 +12,8 @@ import {
 import {
   buildRecentActivity,
   computeOverview,
-  getBestCurrentStreak,
   getMostRecentEntry,
+  getOverallStreak,
   resolveTodayStatus,
 } from '../lib/dashboard.js';
 import { formatRelativeDay } from '../lib/format.js';
@@ -66,7 +66,7 @@ const dataPayload = toScriptJson({ entries, goals });
 
 const cards = persons.map((person) => {
   const todayStatus = resolveTodayStatus(person, entries, goals, today);
-  const streak = getBestCurrentStreak(person, entries, goals, today);
+  const streak = getOverallStreak(person, entries, goals, today);
   const personGoals = goals.filter((g) => g.person === person);
   const mostRecentEntry = getMostRecentEntry(person, entries, today);
 
@@ -75,7 +75,7 @@ const cards = persons.map((person) => {
   if (streak) {
     const from = new Date(today);
     from.setUTCDate(from.getUTCDate() - (MINI_CALENDAR_WINDOW_DAYS - 1));
-    const days = buildCalendarDays(entries, goals, person, streak.topic, { from, to: today });
+    const days = buildOverallCalendarDays(entries, goals, person, { from, to: today });
     miniCalendar = padCalendarDaysForGrid(days);
     consistency = consistencyForWindow(days);
   }
@@ -168,7 +168,7 @@ const cards = persons.map((person) => {
           {overview.bestStreak?.current ?? 0} days
         </span>
         <span class="overview-sub" data-overview="bestStreakSub">
-          {overview.bestStreak?.person} · {overview.bestStreak?.topic}
+          {overview.bestStreak?.person}
         </span>
       </span>
       <span data-best-streak-none style={`display:${overview.bestStreak ? 'none' : 'contents'}`}>
@@ -244,8 +244,7 @@ const cards = persons.map((person) => {
                   <span data-streak-active style={streak ? 'display:contents' : 'display:none'}>
                     <Icon name="lucide:flame" class="icon-flame" aria-hidden="true" />
                     <span>
-                      <strong data-streak-current>{streak?.current ?? 0}</strong> day streak ·{' '}
-                      <span data-streak-topic>{streak?.topic ?? ''}</span>
+                      <strong data-streak-current>{streak?.current ?? 0}</strong> day streak
                       <span
                         class="card-streak-best"
                         data-streak-best
@@ -265,12 +264,7 @@ const cards = persons.map((person) => {
                   data-mini-calendar-block
                   style={miniCalendar.length > 0 ? undefined : 'display:none'}
                 >
-                  <div
-                    class="mini-calendar"
-                    data-mini-calendar
-                    role="img"
-                    aria-label={`Recent ${streak?.topic} activity`}
-                  >
+                  <div class="mini-calendar" data-mini-calendar role="img" aria-label="Recent activity">
                     {miniCalendar.map((day) =>
                       day === null ? (
                         <span class="mini-day mini-day--empty" />
@@ -414,7 +408,7 @@ const cards = persons.map((person) => {
 
 <script>
   import {
-    buildCalendarDays,
+    buildOverallCalendarDays,
     consistencyForWindow,
     formatDayTooltip,
     levelForMinutes,
@@ -423,7 +417,7 @@ const cards = persons.map((person) => {
   } from '../lib/calendar.js';
   import {
     computeOverview,
-    getBestCurrentStreak,
+    getOverallStreak,
     resolveTodayStatus,
     type OverviewStats,
   } from '../lib/dashboard.js';
@@ -485,10 +479,7 @@ const cards = persons.map((person) => {
         if (hasEl) hasEl.style.display = 'contents';
         if (noneEl) noneEl.style.display = 'none';
         setText('[data-overview="bestStreakCurrent"]', `${overview.bestStreak.current} days`);
-        setText(
-          '[data-overview="bestStreakSub"]',
-          `${overview.bestStreak.person} · ${overview.bestStreak.topic}`
-        );
+        setText('[data-overview="bestStreakSub"]', overview.bestStreak.person);
       } else {
         if (hasEl) hasEl.style.display = 'none';
         if (noneEl) noneEl.style.display = 'contents';
@@ -505,7 +496,7 @@ const cards = persons.map((person) => {
         variant.style.display = variant.dataset.statusVariant === todayStatus ? '' : 'none';
       }
 
-      const streak = getBestCurrentStreak(person, entries, goals, today);
+      const streak = getOverallStreak(person, entries, goals, today);
       const activeEl = card.querySelector<HTMLElement>('[data-streak-active]');
       const emptyEl = card.querySelector<HTMLElement>('[data-streak-empty]');
 
@@ -514,8 +505,6 @@ const cards = persons.map((person) => {
         if (emptyEl) emptyEl.style.display = 'none';
         const currentEl = card.querySelector<HTMLElement>('[data-streak-current]');
         if (currentEl) currentEl.textContent = String(streak.current);
-        const topicEl = card.querySelector<HTMLElement>('[data-streak-topic]');
-        if (topicEl) topicEl.textContent = streak.topic;
         const bestEl = card.querySelector<HTMLElement>('[data-streak-best]');
         if (bestEl) {
           if (streak.longest > streak.current) {
@@ -538,8 +527,7 @@ const cards = persons.map((person) => {
       if (streak && miniBlock && miniGrid) {
         const from = new Date(today);
         from.setUTCDate(from.getUTCDate() - (MINI_CALENDAR_WINDOW_DAYS - 1));
-        const days = buildCalendarDays(entries, goals, person, streak.topic, { from, to: today });
-        miniGrid.setAttribute('aria-label', `Recent ${streak.topic} activity`);
+        const days = buildOverallCalendarDays(entries, goals, person, { from, to: today });
         miniGrid.replaceChildren(...padCalendarDaysForGrid(days).map(renderMiniDay));
 
         const consistency = consistencyForWindow(days);

@@ -1,13 +1,7 @@
 import { buildCalendarDays, getPersonTopics, type DayState } from './calendar.js';
-import { calculateStreak, type Goal, type LogEntry } from './streaks.js';
+import { calculateOverallStreak, type Goal, type LogEntry, type Streak } from './streaks.js';
 
 export type TodayStatus = DayState;
-
-export interface StreakSummary {
-  topic: string;
-  current: number;
-  longest: number;
-}
 
 /**
  * A person's single day-state for "today", rolled up across every topic
@@ -36,26 +30,22 @@ export function resolveTodayStatus(
 }
 
 /**
- * The longest-running current streak across a person's topics — a
- * dashboard card shows one headline number, not every topic's streak.
+ * A person's overall streak — any topic touched keeps it alive — for the
+ * dashboard card's one headline number. Reuses `calculateOverallStreak`
+ * rather than re-deriving it; drilling into a specific topic (the
+ * calendar page's topic filter) shows that topic's own streak instead.
  * Returns null when the person has no topics at all (e.g. a freshly
  * onboarded person with no logs or goals yet).
  */
-export function getBestCurrentStreak(
+export function getOverallStreak(
   person: string,
   entries: LogEntry[],
   goals: Goal[],
   today: Date = new Date()
-): StreakSummary | null {
+): Streak | null {
   const topics = getPersonTopics(person, entries, goals);
-  let best: StreakSummary | null = null;
-  for (const topic of topics) {
-    const streak = calculateStreak(entries, goals, person, topic, today);
-    if (!best || streak.current > best.current) {
-      best = { topic, ...streak };
-    }
-  }
-  return best;
+  if (topics.length === 0) return null;
+  return calculateOverallStreak(entries, goals, person, today);
 }
 
 function toDateKey(date: Date): string {
@@ -73,7 +63,7 @@ export interface OverviewStats {
   activePeopleCount: number;
   entriesLoggedToday: number;
   minutesLoggedToday: number;
-  bestStreak: (StreakSummary & { person: string }) | null;
+  bestStreak: (Streak & { person: string }) | null;
 }
 
 /**
@@ -107,9 +97,9 @@ export function computeOverview(
     }
   }
 
-  let bestStreak: (StreakSummary & { person: string }) | null = null;
+  let bestStreak: (Streak & { person: string }) | null = null;
   for (const person of persons) {
-    const streak = getBestCurrentStreak(person, entries, goals, today);
+    const streak = getOverallStreak(person, entries, goals, today);
     if (streak && streak.current > 0 && (!bestStreak || streak.current > bestStreak.current)) {
       bestStreak = { person, ...streak };
     }

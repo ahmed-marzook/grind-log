@@ -50,39 +50,54 @@ const dataPayload = toScriptJson({ entries, goals });
           </p>
         </noscript>
 
-        <label class="topic-filter">
-          Topic:
-          <select id="topic-select">
-            {topics.map((topic, i) => (
-              <option value={topic} selected={i === 0}>
-                {topic}
-              </option>
-            ))}
-          </select>
-        </label>
+        <section class="overall-section">
+          <h2 class="section-heading">Overall activity</h2>
+          <p class="panel-copy">
+            Any topic touched counts — this is the streak shown on the dashboard. Pick a topic
+            below to see its own streak and history.
+          </p>
+          <p class="streaks" data-overall-streak-text>
+            Loading streak…
+          </p>
+          <div class="calendar-chart" data-overall-chart aria-label="Overall activity" />
+          <ul class="legend">
+            <li>
+              <span class="swatch swatch--completed" /> Completed
+            </li>
+            <li>
+              <span class="swatch swatch--excused" /> Excused
+            </li>
+            <li>
+              <span class="swatch swatch--missed" /> Missed
+            </li>
+            <li>
+              <span class="swatch swatch--not-scheduled" /> Not scheduled
+            </li>
+          </ul>
+        </section>
 
-        {topics.map((topic, i) => (
-          <section class="topic-panel" data-topic-section={topic} hidden={i !== 0}>
-            <p class="streaks" data-streak-text>
-              Loading streak…
-            </p>
-            <div class="calendar-chart" data-calendar-chart aria-label={`${topic} activity`} />
-            <ul class="legend">
-              <li>
-                <span class="swatch swatch--completed" /> Completed
-              </li>
-              <li>
-                <span class="swatch swatch--excused" /> Excused
-              </li>
-              <li>
-                <span class="swatch swatch--missed" /> Missed
-              </li>
-              <li>
-                <span class="swatch swatch--not-scheduled" /> Not scheduled
-              </li>
-            </ul>
-          </section>
-        ))}
+        <section class="topic-section">
+          <h2 class="section-heading">By topic</h2>
+          <label class="topic-filter">
+            Topic:
+            <select id="topic-select">
+              {topics.map((topic, i) => (
+                <option value={topic} selected={i === 0}>
+                  {topic}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {topics.map((topic, i) => (
+            <section class="topic-panel" data-topic-section={topic} hidden={i !== 0}>
+              <p class="streaks" data-streak-text>
+                Loading streak…
+              </p>
+              <div class="calendar-chart" data-calendar-chart aria-label={`${topic} activity`} />
+            </section>
+          ))}
+        </section>
 
         <script type="application/json" id="calendar-data" is:inline set:html={dataPayload}></script>
       </div>
@@ -92,9 +107,16 @@ const dataPayload = toScriptJson({ entries, goals });
 
 <script>
   import ApexCharts from 'apexcharts';
-  import { buildCalendarDays, formatDayTooltip, levelForMinutes, type CalendarDay } from '../../lib/calendar.js';
+  import {
+    buildCalendarDays,
+    buildOverallCalendarDays,
+    formatDayTooltip,
+    getPersonTopics,
+    levelForMinutes,
+    type CalendarDay,
+  } from '../../lib/calendar.js';
   import { reviveGoals, reviveLogEntries } from '../../lib/serialize.js';
-  import { calculateStreak } from '../../lib/streaks.js';
+  import { calculateOverallStreak, calculateStreak, type Streak } from '../../lib/streaks.js';
   import type { SerializedGoal, SerializedLogEntry } from '../../lib/serialize.js';
 
   const app = document.querySelector<HTMLElement>('#calendar-app');
@@ -113,6 +135,9 @@ const dataPayload = toScriptJson({ entries, goals });
     // How far back to render when a topic has no goal start date and no
     // entries yet — just enough to show a non-empty grid, not a schedule.
     const DEFAULT_LOOKBACK_DAYS = 84;
+    // The overall view always shows a full year, GitHub-contributions
+    // style, regardless of how much history this person actually has.
+    const OVERALL_LOOKBACK_DAYS = 364;
 
     // Day-state codes mapped to fixed colors via colorScale ranges below —
     // a heatmap's color axis is normally a continuous scale, so each
@@ -137,6 +162,18 @@ const dataPayload = toScriptJson({ entries, goals });
       surface: cssVar('--surface') || '#171a21',
     };
 
+    // Row order (index 0 = Sunday) matches every day's actual weekday.
+    // Tried a sparse Mon/Wed/Fri-only labeling to match the GitHub-style
+    // reference more closely, but ApexCharts heatmap y-axis labels come
+    // from `series[].name`, and blanking some of them (via '', ' ', or
+    // distinct zero-width-space strings) made *all* of them disappear,
+    // not just the blanked rows — a library quirk not worth fighting
+    // further for a cosmetic label density difference.
+    const WEEKDAY_ROW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const MONTH_ABBREV = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+
     function dayCode(day: CalendarDay | null): number {
       if (day === null) return CODE_PAD;
       if (day.state === 'not-scheduled') return CODE_NOT_SCHEDULED;
@@ -144,11 +181,6 @@ const dataPayload = toScriptJson({ entries, goals });
       if (day.state === 'excused') return CODE_EXCUSED;
       return CODE_COMPLETED_BASE + levelForMinutes(day.minutes);
     }
-
-    const WEEKDAY_ROWS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const MONTH_ABBREV = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-    ];
 
     function earliestFor(topic: string): Date {
       const goal = goals.find(
@@ -169,9 +201,15 @@ const dataPayload = toScriptJson({ entries, goals });
       return new Date(Math.min(...candidates.map((d) => d.getTime())));
     }
 
+    function daysAgo(count: number): Date {
+      const from = new Date(today);
+      from.setUTCDate(from.getUTCDate() - count);
+      return from;
+    }
+
     // Pads the front so the first real day lands in its correct weekday
-    // row (row 0 = Sunday), matching WEEKDAY_ROWS, then reshapes into
-    // week-columns for the heatmap's 7-row x N-week layout.
+    // row (row 0 = Sunday), matching WEEKDAY_ROW_LABELS, then reshapes
+    // into week-columns for the heatmap's 7-row x N-week layout.
     function toWeekColumns(days: CalendarDay[]): (CalendarDay | null)[][] {
       if (days.length === 0) return [];
       const firstDow = new Date(`${days[0].date}T00:00:00.000Z`).getUTCDay();
@@ -202,44 +240,45 @@ const dataPayload = toScriptJson({ entries, goals });
         return ' ';
       });
 
-      return WEEKDAY_ROWS.map((name, row) => ({
+      return WEEKDAY_ROW_LABELS.map((name, row) => ({
         name,
         data: weeks.map((week, col) => ({ x: columnLabels[col], y: dayCode(week[row]) })),
       }));
     }
 
-    const charts = new Map<string, ApexCharts>();
+    function escapeHtml(text: string): string {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
 
-    function renderChart(section: HTMLElement, topic: string) {
-      const container = section.querySelector<HTMLElement>('[data-calendar-chart]')!;
-      const streakText = section.querySelector<HTMLElement>('[data-streak-text]')!;
-
-      const from = earliestFor(topic);
-      const days = buildCalendarDays(entries, goals, person, topic, { from, to: today });
-      const streak = calculateStreak(entries, goals, person, topic, today);
-
+    function setStreakText(el: HTMLElement, streak: Streak) {
       const currentEl = document.createElement('strong');
       currentEl.textContent = String(streak.current);
       const longestEl = document.createElement('strong');
       longestEl.textContent = String(streak.longest);
-      streakText.replaceChildren(
+      el.replaceChildren(
         currentEl,
         ' day current streak · ',
         longestEl,
         ' day longest streak'
       );
+    }
 
+    // Shared between the overall chart and every per-topic chart — they
+    // only differ in which days/streak feed them.
+    function renderHeatmap(container: HTMLElement, days: CalendarDay[]) {
       const weeks = toWeekColumns(days);
       const series = buildSeries(weeks);
 
       // seriesIndex/dataPointIndex from ApexCharts' tooltip callback map
-      // straight back to weeks[col][row] — the same shape the series/
+      // straight back to weeks[col][row] — the same shape series/
       // categories were built from — so the tooltip can show the real
       // title/minutes/reason instead of just the numeric color code.
       const chart = new ApexCharts(container, {
         chart: {
           type: 'heatmap',
-          height: 190,
+          height: 170,
           background: 'transparent',
           toolbar: { show: false },
           fontFamily: 'inherit',
@@ -299,31 +338,70 @@ const dataPayload = toScriptJson({ entries, goals });
       });
 
       chart.render();
-      charts.set(topic, chart);
+      return chart;
     }
 
-    function escapeHtml(text: string): string {
-      const div = document.createElement('div');
-      div.textContent = text;
-      return div.innerHTML;
+    // Never further back than each topic's own earliest point (a goal's
+    // start, or its first entry) — a fixed one-year lookback would mark
+    // every day before a topic even existed as "missed", which is wrong,
+    // not just stale. Caps at a year back when there's more history than
+    // that, matching a GitHub-style full-year view.
+    function overallFrom(): Date {
+      const topics = getPersonTopics(person, entries, goals);
+      const cutoff = daysAgo(OVERALL_LOOKBACK_DAYS).getTime();
+      if (topics.length === 0) return new Date(cutoff);
+      const earliest = Math.min(...topics.map((t) => earliestFor(t).getTime()));
+      return new Date(Math.max(earliest, cutoff));
     }
 
-    function ensureChartForTopic(topic: string) {
-      if (charts.has(topic)) return;
+    function renderOverall() {
+      const container = app!.querySelector<HTMLElement>('[data-overall-chart]');
+      const streakText = app!.querySelector<HTMLElement>('[data-overall-streak-text]');
+      if (!container || !streakText) return;
+
+      const days = buildOverallCalendarDays(entries, goals, person, {
+        from: overallFrom(),
+        to: today,
+      });
+      setStreakText(streakText, calculateOverallStreak(entries, goals, person, today));
+      renderHeatmap(container, days);
+    }
+
+    const topicCharts = new Set<string>();
+
+    function renderTopic(section: HTMLElement, topic: string) {
+      const container = section.querySelector<HTMLElement>('[data-calendar-chart]')!;
+      const streakText = section.querySelector<HTMLElement>('[data-streak-text]')!;
+
+      const days = buildCalendarDays(entries, goals, person, topic, {
+        from: earliestFor(topic),
+        to: today,
+      });
+      setStreakText(streakText, calculateStreak(entries, goals, person, topic, today));
+      renderHeatmap(container, days);
+    }
+
+    function ensureTopicChart(topic: string) {
+      if (topicCharts.has(topic)) return;
       const section = app!.querySelector<HTMLElement>(`[data-topic-section="${CSS.escape(topic)}"]`);
-      if (section) renderChart(section, topic);
+      if (section) {
+        renderTopic(section, topic);
+        topicCharts.add(topic);
+      }
     }
+
+    renderOverall();
 
     const select = document.querySelector<HTMLSelectElement>('#topic-select');
     const sections = app.querySelectorAll<HTMLElement>('[data-topic-section]');
 
     if (select) {
-      ensureChartForTopic(select.value);
+      ensureTopicChart(select.value);
       select.addEventListener('change', () => {
         for (const s of sections) {
           s.hidden = s.dataset.topicSection !== select.value;
         }
-        ensureChartForTopic(select.value);
+        ensureTopicChart(select.value);
       });
     }
   }
@@ -332,6 +410,16 @@ const dataPayload = toScriptJson({ entries, goals });
 <style>
   .panel-empty {
     color: var(--text-dim);
+  }
+  .panel-copy {
+    color: var(--text-dim);
+    max-width: 60ch;
+    margin: 0 0 1rem;
+  }
+  .overall-section {
+    margin-bottom: 2rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border);
   }
   .topic-filter {
     display: inline-flex;
@@ -344,7 +432,6 @@ const dataPayload = toScriptJson({ entries, goals });
     margin: 0 0 1rem;
   }
   .calendar-chart {
-    max-width: 900px;
     margin-bottom: 0.5rem;
   }
   .legend {
@@ -353,7 +440,7 @@ const dataPayload = toScriptJson({ entries, goals });
     flex-wrap: wrap;
     gap: 1rem;
     padding: 0;
-    margin: 1rem 0 2rem;
+    margin: 1rem 0 0;
     color: var(--text-dim);
     font-size: 0.85rem;
   }
