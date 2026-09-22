@@ -20,6 +20,7 @@ import { formatRelativeDay } from '../lib/format.js';
 import { personLogsUrl, REPO_URL } from '../lib/github.js';
 import { summarizeGoalsByStatus } from '../lib/goals.js';
 import { getAllPersons } from '../lib/people.js';
+import { toScriptJson } from '../lib/serialize.js';
 import type { Goal, LogEntry } from '../lib/streaks.js';
 
 const logCollection = await getCollection('logs');
@@ -53,6 +54,15 @@ const TODAY_STATUS = {
   missed: { label: 'Missed today', icon: 'lucide:circle-x' },
   'not-scheduled': { label: 'Nothing scheduled today', icon: 'lucide:circle' },
 } as const;
+const STATUS_KEYS = Object.keys(TODAY_STATUS) as (keyof typeof TODAY_STATUS)[];
+
+// Everything below derived from `today` — today's status, streaks, the
+// mini-calendar, and the overview strip — is rendered here as a build-time
+// snapshot (so the page still has sensible content and works without JS),
+// then corrected by the client script at the bottom of this file against
+// the viewer's real clock, since this is a statically-built site that can
+// be viewed long after it was last built.
+const dataPayload = toScriptJson({ entries, goals });
 
 const cards = persons.map((person) => {
   const todayStatus = resolveTodayStatus(person, entries, goals, today);
@@ -135,35 +145,36 @@ const cards = persons.map((person) => {
     <li class="overview-card">
       <span class="overview-icon"><Icon name="lucide:clock" aria-hidden="true" /></span>
       <span class="overview-label">Logged today</span>
-      <span class="overview-value">{overview.minutesLoggedToday} min</span>
-      <span class="overview-sub">
+      <span class="overview-value" data-overview="minutesLoggedToday">
+        {overview.minutesLoggedToday} min
+      </span>
+      <span class="overview-sub" data-overview="entriesLoggedTodayText">
         {overview.entriesLoggedToday} {overview.entriesLoggedToday === 1 ? 'entry' : 'entries'}
       </span>
     </li>
     <li class="overview-card">
       <span class="overview-icon"><Icon name="lucide:users" aria-hidden="true" /></span>
       <span class="overview-label">People tracked</span>
-      <span class="overview-value">{overview.totalPeople}</span>
-      <span class="overview-sub">{overview.activePeopleCount} active this week</span>
+      <span class="overview-value" data-overview="totalPeople">{overview.totalPeople}</span>
+      <span class="overview-sub" data-overview="activePeopleText">
+        {overview.activePeopleCount} active this week
+      </span>
     </li>
     <li class="overview-card">
       <span class="overview-icon overview-icon--flame"><Icon name="lucide:flame" aria-hidden="true" /></span>
       <span class="overview-label">Best current streak</span>
-      {
-        overview.bestStreak ? (
-          <>
-            <span class="overview-value">{overview.bestStreak.current} days</span>
-            <span class="overview-sub">
-              {overview.bestStreak.person} · {overview.bestStreak.topic}
-            </span>
-          </>
-        ) : (
-          <>
-            <span class="overview-value">—</span>
-            <span class="overview-sub">No active streaks yet</span>
-          </>
-        )
-      }
+      <span data-best-streak-has style={`display:${overview.bestStreak ? 'contents' : 'none'}`}>
+        <span class="overview-value" data-overview="bestStreakCurrent">
+          {overview.bestStreak?.current ?? 0} days
+        </span>
+        <span class="overview-sub" data-overview="bestStreakSub">
+          {overview.bestStreak?.person} · {overview.bestStreak?.topic}
+        </span>
+      </span>
+      <span data-best-streak-none style={`display:${overview.bestStreak ? 'none' : 'contents'}`}>
+        <span class="overview-value">—</span>
+        <span class="overview-sub">No active streaks yet</span>
+      </span>
     </li>
     <li class="overview-card overview-card--cta">
       <span class="overview-icon"><Icon name="lucide:sparkles" aria-hidden="true" /></span>
@@ -210,65 +221,78 @@ const cards = persons.map((person) => {
             logTodayUrl,
           }) => (
             <li>
-              <div class={`person-card person-card--${todayStatus}`}>
+              <div class="person-card" data-person-card={person} data-today-status={todayStatus}>
                 <div class="card-top">
                   <h3>
                     <a class="card-title-link" href={`${base}${person}/`}>
                       {person}
                     </a>
                   </h3>
-                  <span class={`today-badge today-badge--${todayStatus}`}>
-                    <Icon
-                      name={TODAY_STATUS[todayStatus].icon}
-                      class="icon-status"
-                      aria-hidden="true"
-                    />
-                    {TODAY_STATUS[todayStatus].label}
-                  </span>
+                  {STATUS_KEYS.map((status) => (
+                    <span
+                      class={`today-badge today-badge--${status}`}
+                      data-status-variant={status}
+                      style={status === todayStatus ? undefined : 'display:none'}
+                    >
+                      <Icon name={TODAY_STATUS[status].icon} class="icon-status" aria-hidden="true" />
+                      {TODAY_STATUS[status].label}
+                    </span>
+                  ))}
                 </div>
 
                 <p class="card-streak">
-                  {streak ? (
-                    <>
-                      <Icon name="lucide:flame" class="icon-flame" aria-hidden="true" />
-                      <span>
-                        <strong>{streak.current}</strong> day streak · {streak.topic}
-                        {streak.longest > streak.current && (
-                          <span class="card-streak-best"> (best {streak.longest})</span>
-                        )}
+                  <span data-streak-active style={streak ? 'display:contents' : 'display:none'}>
+                    <Icon name="lucide:flame" class="icon-flame" aria-hidden="true" />
+                    <span>
+                      <strong data-streak-current>{streak?.current ?? 0}</strong> day streak ·{' '}
+                      <span data-streak-topic>{streak?.topic ?? ''}</span>
+                      <span
+                        class="card-streak-best"
+                        data-streak-best
+                        style={streak && streak.longest > streak.current ? undefined : 'display:none'}
+                      >
+                        {' '}(best <span data-streak-longest>{streak?.longest ?? 0}</span>)
                       </span>
-                    </>
-                  ) : (
-                    'No entries yet'
-                  )}
+                    </span>
+                  </span>
+                  <span data-streak-empty style={streak ? 'display:none' : undefined}>
+                    No entries yet
+                  </span>
                 </p>
 
-                {miniCalendar.length > 0 && (
-                  <div class="mini-calendar-block">
-                    <div
-                      class="mini-calendar"
-                      role="img"
-                      aria-label={`Recent ${streak?.topic} activity`}
-                    >
-                      {miniCalendar.map((day) =>
-                        day === null ? (
-                          <span class="mini-day mini-day--empty" />
-                        ) : (
-                          <span
-                            class={`mini-day mini-day--${day.state}`}
-                            data-level={
-                              day.state === 'completed' ? levelForMinutes(day.minutes) : undefined
-                            }
-                            title={formatDayTooltip(day)}
-                          />
-                        )
-                      )}
-                    </div>
-                    {consistency !== null && (
-                      <span class="consistency-badge">{consistency}% consistency</span>
+                <div
+                  class="mini-calendar-block"
+                  data-mini-calendar-block
+                  style={miniCalendar.length > 0 ? undefined : 'display:none'}
+                >
+                  <div
+                    class="mini-calendar"
+                    data-mini-calendar
+                    role="img"
+                    aria-label={`Recent ${streak?.topic} activity`}
+                  >
+                    {miniCalendar.map((day) =>
+                      day === null ? (
+                        <span class="mini-day mini-day--empty" />
+                      ) : (
+                        <span
+                          class={`mini-day mini-day--${day.state}`}
+                          data-level={
+                            day.state === 'completed' ? levelForMinutes(day.minutes) : undefined
+                          }
+                          title={formatDayTooltip(day)}
+                        />
+                      )
                     )}
                   </div>
-                )}
+                  <span
+                    class="consistency-badge"
+                    data-consistency-badge
+                    style={consistency !== null ? undefined : 'display:none'}
+                  >
+                    {consistency}% consistency
+                  </span>
+                </div>
 
                 <p class="card-recent">
                   <Icon name="lucide:activity" class="icon-recent" aria-hidden="true" />
@@ -384,10 +408,156 @@ const cards = persons.map((person) => {
       </ul>
     </section>
   </div>
+
+  <script type="application/json" id="dashboard-data" is:inline set:html={dataPayload}></script>
 </Base>
 
 <script>
+  import {
+    buildCalendarDays,
+    consistencyForWindow,
+    formatDayTooltip,
+    levelForMinutes,
+    padCalendarDaysForGrid,
+    type CalendarDay,
+  } from '../lib/calendar.js';
+  import {
+    computeOverview,
+    getBestCurrentStreak,
+    resolveTodayStatus,
+    type OverviewStats,
+  } from '../lib/dashboard.js';
   import { formatRelativeDay } from '../lib/format.js';
+  import { getAllPersons } from '../lib/people.js';
+  import { reviveGoals, reviveLogEntries } from '../lib/serialize.js';
+  import type { SerializedGoal, SerializedLogEntry } from '../lib/serialize.js';
+
+  // Today's status badges, streaks, the mini-calendar, and the overview
+  // strip are all "as of today" — rendered above with a build-time
+  // snapshot for a sensible no-JS fallback, then corrected here against
+  // the viewer's real clock, since this is a statically-built site that
+  // can be viewed long after it was last built.
+  const dashboardDataEl = document.querySelector<HTMLScriptElement>('#dashboard-data');
+  if (dashboardDataEl) {
+    const raw = JSON.parse(dashboardDataEl.textContent!) as {
+      entries: SerializedLogEntry[];
+      goals: SerializedGoal[];
+    };
+    const entries = reviveLogEntries(raw.entries);
+    const goals = reviveGoals(raw.goals);
+    const persons = getAllPersons(entries, goals);
+    const today = new Date();
+
+    // A card-sized peek, not the full calendar — just enough weeks to show
+    // the shape of recent activity at a glance.
+    const MINI_CALENDAR_WINDOW_DAYS = 28;
+
+    function setText(selector: string, text: string) {
+      document.querySelector<HTMLElement>(selector)?.replaceChildren(document.createTextNode(text));
+    }
+
+    function renderMiniDay(day: CalendarDay | null): HTMLSpanElement {
+      const el = document.createElement('span');
+      if (day === null) {
+        el.className = 'mini-day mini-day--empty';
+        return el;
+      }
+      el.className = `mini-day mini-day--${day.state}`;
+      if (day.state === 'completed') {
+        el.dataset.level = String(levelForMinutes(day.minutes));
+      }
+      el.title = formatDayTooltip(day);
+      return el;
+    }
+
+    function updateOverview(overview: OverviewStats) {
+      setText('[data-overview="minutesLoggedToday"]', `${overview.minutesLoggedToday} min`);
+      setText(
+        '[data-overview="entriesLoggedTodayText"]',
+        `${overview.entriesLoggedToday} ${overview.entriesLoggedToday === 1 ? 'entry' : 'entries'}`
+      );
+      setText('[data-overview="totalPeople"]', String(overview.totalPeople));
+      setText('[data-overview="activePeopleText"]', `${overview.activePeopleCount} active this week`);
+
+      const hasEl = document.querySelector<HTMLElement>('[data-best-streak-has]');
+      const noneEl = document.querySelector<HTMLElement>('[data-best-streak-none]');
+      if (overview.bestStreak) {
+        if (hasEl) hasEl.style.display = 'contents';
+        if (noneEl) noneEl.style.display = 'none';
+        setText('[data-overview="bestStreakCurrent"]', `${overview.bestStreak.current} days`);
+        setText(
+          '[data-overview="bestStreakSub"]',
+          `${overview.bestStreak.person} · ${overview.bestStreak.topic}`
+        );
+      } else {
+        if (hasEl) hasEl.style.display = 'none';
+        if (noneEl) noneEl.style.display = 'contents';
+      }
+    }
+
+    updateOverview(computeOverview(persons, entries, goals, today));
+
+    for (const card of document.querySelectorAll<HTMLElement>('[data-person-card]')) {
+      const person = card.dataset.personCard!;
+      const todayStatus = resolveTodayStatus(person, entries, goals, today);
+      card.dataset.todayStatus = todayStatus;
+      for (const variant of card.querySelectorAll<HTMLElement>('[data-status-variant]')) {
+        variant.style.display = variant.dataset.statusVariant === todayStatus ? '' : 'none';
+      }
+
+      const streak = getBestCurrentStreak(person, entries, goals, today);
+      const activeEl = card.querySelector<HTMLElement>('[data-streak-active]');
+      const emptyEl = card.querySelector<HTMLElement>('[data-streak-empty]');
+
+      if (streak) {
+        if (activeEl) activeEl.style.display = 'contents';
+        if (emptyEl) emptyEl.style.display = 'none';
+        const currentEl = card.querySelector<HTMLElement>('[data-streak-current]');
+        if (currentEl) currentEl.textContent = String(streak.current);
+        const topicEl = card.querySelector<HTMLElement>('[data-streak-topic]');
+        if (topicEl) topicEl.textContent = streak.topic;
+        const bestEl = card.querySelector<HTMLElement>('[data-streak-best]');
+        if (bestEl) {
+          if (streak.longest > streak.current) {
+            bestEl.style.display = '';
+            const longestEl = card.querySelector<HTMLElement>('[data-streak-longest]');
+            if (longestEl) longestEl.textContent = String(streak.longest);
+          } else {
+            bestEl.style.display = 'none';
+          }
+        }
+      } else {
+        if (activeEl) activeEl.style.display = 'none';
+        if (emptyEl) emptyEl.style.display = '';
+      }
+
+      const miniBlock = card.querySelector<HTMLElement>('[data-mini-calendar-block]');
+      const miniGrid = card.querySelector<HTMLElement>('[data-mini-calendar]');
+      const consistencyEl = card.querySelector<HTMLElement>('[data-consistency-badge]');
+
+      if (streak && miniBlock && miniGrid) {
+        const from = new Date(today);
+        from.setUTCDate(from.getUTCDate() - (MINI_CALENDAR_WINDOW_DAYS - 1));
+        const days = buildCalendarDays(entries, goals, person, streak.topic, { from, to: today });
+        miniGrid.setAttribute('aria-label', `Recent ${streak.topic} activity`);
+        miniGrid.replaceChildren(...padCalendarDaysForGrid(days).map(renderMiniDay));
+
+        const consistency = consistencyForWindow(days);
+        if (consistencyEl) {
+          if (consistency !== null) {
+            consistencyEl.style.display = '';
+            consistencyEl.textContent = `${consistency}% consistency`;
+          } else {
+            consistencyEl.style.display = 'none';
+          }
+        }
+        miniBlock.style.display = '';
+      } else {
+        miniGrid?.replaceChildren();
+        if (miniBlock) miniBlock.style.display = 'none';
+      }
+    }
+  }
 
   // Labels are rendered with the build-time date server-side, then
   // corrected here against the viewer's real clock — this is a
@@ -651,13 +821,13 @@ const cards = persons.map((person) => {
   .person-card:hover {
     border-color: var(--accent);
   }
-  .person-card--completed {
+  .person-card[data-today-status='completed'] {
     border-left-color: #26a641;
   }
-  .person-card--excused {
+  .person-card[data-today-status='excused'] {
     border-left-color: var(--excused);
   }
-  .person-card--missed {
+  .person-card[data-today-status='missed'] {
     border-left-color: var(--missed-border);
   }
   .card-top {

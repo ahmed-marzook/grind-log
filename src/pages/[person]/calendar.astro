@@ -2,15 +2,9 @@
 import { getCollection } from 'astro:content';
 import Base from '../../layouts/Base.astro';
 import PersonNav from '../../components/PersonNav.astro';
-import {
-  buildCalendarDays,
-  formatDayTooltip,
-  getPersonTopics,
-  levelForMinutes,
-  padCalendarDaysForGrid,
-} from '../../lib/calendar.js';
+import { getPersonTopics } from '../../lib/calendar.js';
 import { getAllPersons } from '../../lib/people.js';
-import { calculateStreak } from '../../lib/streaks.js';
+import { toScriptJson } from '../../lib/serialize.js';
 import type { Goal, LogEntry } from '../../lib/streaks.js';
 
 export async function getStaticPaths() {
@@ -22,41 +16,20 @@ export async function getStaticPaths() {
 
 const { person } = Astro.params as { person: string };
 
-const entries: LogEntry[] = (await getCollection('logs')).map((l) => l.data);
-const goals: Goal[] = (await getCollection('goals')).map((g) => g.data);
+const entries: LogEntry[] = (await getCollection('logs', (e) => e.data.person === person)).map(
+  (l) => l.data
+);
+const goals: Goal[] = (await getCollection('goals', (g) => g.data.person === person)).map(
+  (g) => g.data
+);
 
+// The day-by-day state and streak numbers below depend on "today" — this
+// is a statically-built site, so anything computed from `new Date()` here
+// would be frozen to build time and go stale between rebuilds. The
+// skeleton below is filled in (and kept correct) by the client script at
+// the bottom of this file instead, using the viewer's real clock.
 const topics = getPersonTopics(person, entries, goals);
-const today = new Date();
-
-// How far back to render when a topic has no goal start date and no
-// entries yet — just enough to show a non-empty grid, not a schedule.
-const DEFAULT_LOOKBACK_DAYS = 84;
-
-function earliestFor(topic: string): Date {
-  const goal = goals.find(
-    (g) => g.person === person && g.topic === topic && g.status === 'in-progress'
-  );
-  const candidates: Date[] = [];
-  if (goal?.started) candidates.push(goal.started);
-  for (const e of entries) {
-    if (e.person === person && e.status === 'completed' && e.topic === topic) {
-      candidates.push(e.date);
-    }
-  }
-  if (candidates.length === 0) {
-    const fallback = new Date(today);
-    fallback.setUTCDate(fallback.getUTCDate() - DEFAULT_LOOKBACK_DAYS);
-    return fallback;
-  }
-  return new Date(Math.min(...candidates.map((d) => d.getTime())));
-}
-
-const topicData = topics.map((topic) => {
-  const from = earliestFor(topic);
-  const days = buildCalendarDays(entries, goals, person, topic, { from, to: today });
-  const streak = calculateStreak(entries, goals, person, topic, today);
-  return { topic, days: padCalendarDaysForGrid(days), streak };
-});
+const dataPayload = toScriptJson({ entries, goals });
 ---
 
 <Base title={`${person} · calendar`}>
@@ -64,14 +37,21 @@ const topicData = topics.map((topic) => {
   <PersonNav person={person} active="calendar" />
 
   {
-    topicData.length === 0 ? (
+    topics.length === 0 ? (
       <p>No topics logged yet.</p>
     ) : (
-      <>
+      <div id="calendar-app" data-person={person}>
+        <noscript>
+          <p class="panel-empty">
+            The calendar and streaks need JavaScript enabled to render — everything else on the
+            site works without it.
+          </p>
+        </noscript>
+
         <label class="topic-filter">
           Topic:
           <select id="topic-select">
-            {topicData.map(({ topic }, i) => (
+            {topics.map((topic, i) => (
               <option value={topic} selected={i === 0}>
                 {topic}
               </option>
@@ -79,49 +59,135 @@ const topicData = topics.map((topic) => {
           </select>
         </label>
 
-        {topicData.map(({ topic, days, streak }, i) => (
+        {topics.map((topic, i) => (
           <section class="topic-panel" data-topic-section={topic} hidden={i !== 0}>
-            <p class="streaks">
-              <strong>{streak.current}</strong> day current streak ·{' '}
-              <strong>{streak.longest}</strong> day longest streak
+            <p class="streaks" data-streak-text>
+              Loading streak…
             </p>
-            <div class="calendar-grid">
-              {days.map((day) =>
-                day === null ? (
-                  <div class="day day--empty" />
-                ) : (
-                  <div
-                    class={`day day--${day.state}`}
-                    data-level={day.state === 'completed' ? levelForMinutes(day.minutes) : undefined}
-                    title={formatDayTooltip(day)}
-                  />
-                )
-              )}
-            </div>
+            <div class="calendar-grid" data-calendar-grid aria-label={`${topic} activity`} />
             <ul class="legend">
-              <li><span class="swatch swatch--completed" /> Completed</li>
-              <li><span class="swatch swatch--excused" /> Excused</li>
-              <li><span class="swatch swatch--missed" /> Missed</li>
-              <li><span class="swatch swatch--not-scheduled" /> Not scheduled</li>
+              <li>
+                <span class="swatch swatch--completed" /> Completed
+              </li>
+              <li>
+                <span class="swatch swatch--excused" /> Excused
+              </li>
+              <li>
+                <span class="swatch swatch--missed" /> Missed
+              </li>
+              <li>
+                <span class="swatch swatch--not-scheduled" /> Not scheduled
+              </li>
             </ul>
           </section>
         ))}
-      </>
+
+        <script type="application/json" id="calendar-data" is:inline set:html={dataPayload}></script>
+      </div>
     )
   }
 </Base>
 
 <script>
-  const select = document.querySelector<HTMLSelectElement>('#topic-select');
-  const sections = document.querySelectorAll<HTMLElement>('[data-topic-section]');
-  select?.addEventListener('change', () => {
-    for (const section of sections) {
-      section.hidden = section.dataset.topicSection !== select.value;
+  import {
+    buildCalendarDays,
+    formatDayTooltip,
+    levelForMinutes,
+    padCalendarDaysForGrid,
+    type CalendarDay,
+  } from '../../lib/calendar.js';
+  import { reviveGoals, reviveLogEntries } from '../../lib/serialize.js';
+  import { calculateStreak } from '../../lib/streaks.js';
+  import type { SerializedGoal, SerializedLogEntry } from '../../lib/serialize.js';
+
+  const app = document.querySelector<HTMLElement>('#calendar-app');
+  if (app) {
+    const person = app.dataset.person!;
+    const dataEl = document.querySelector<HTMLScriptElement>('#calendar-data')!;
+    const raw = JSON.parse(dataEl.textContent!) as {
+      entries: SerializedLogEntry[];
+      goals: SerializedGoal[];
+    };
+    const entries = reviveLogEntries(raw.entries);
+    const goals = reviveGoals(raw.goals);
+
+    const today = new Date();
+
+    // How far back to render when a topic has no goal start date and no
+    // entries yet — just enough to show a non-empty grid, not a schedule.
+    const DEFAULT_LOOKBACK_DAYS = 84;
+
+    function earliestFor(topic: string): Date {
+      const goal = goals.find(
+        (g) => g.person === person && g.topic === topic && g.status === 'in-progress'
+      );
+      const candidates: Date[] = [];
+      if (goal?.started) candidates.push(goal.started);
+      for (const e of entries) {
+        if (e.person === person && e.status === 'completed' && e.topic === topic) {
+          candidates.push(e.date);
+        }
+      }
+      if (candidates.length === 0) {
+        const fallback = new Date(today);
+        fallback.setUTCDate(fallback.getUTCDate() - DEFAULT_LOOKBACK_DAYS);
+        return fallback;
+      }
+      return new Date(Math.min(...candidates.map((d) => d.getTime())));
     }
-  });
+
+    function renderDay(day: CalendarDay | null): HTMLDivElement {
+      const el = document.createElement('div');
+      if (day === null) {
+        el.className = 'day day--empty';
+        return el;
+      }
+      el.className = `day day--${day.state}`;
+      if (day.state === 'completed') {
+        el.dataset.level = String(levelForMinutes(day.minutes));
+      }
+      el.title = formatDayTooltip(day);
+      return el;
+    }
+
+    for (const section of app.querySelectorAll<HTMLElement>('[data-topic-section]')) {
+      const topic = section.dataset.topicSection!;
+      const streakText = section.querySelector<HTMLElement>('[data-streak-text]')!;
+      const grid = section.querySelector<HTMLElement>('[data-calendar-grid]')!;
+
+      const from = earliestFor(topic);
+      const days = buildCalendarDays(entries, goals, person, topic, { from, to: today });
+      const streak = calculateStreak(entries, goals, person, topic, today);
+
+      const currentEl = document.createElement('strong');
+      currentEl.textContent = String(streak.current);
+      const longestEl = document.createElement('strong');
+      longestEl.textContent = String(streak.longest);
+      streakText.replaceChildren(
+        currentEl,
+        ' day current streak · ',
+        longestEl,
+        ' day longest streak'
+      );
+
+      const padded = padCalendarDaysForGrid(days);
+      grid.replaceChildren(...padded.map(renderDay));
+    }
+
+    const select = document.querySelector<HTMLSelectElement>('#topic-select');
+    const sections = document.querySelectorAll<HTMLElement>('[data-topic-section]');
+    select?.addEventListener('change', () => {
+      for (const s of sections) {
+        s.hidden = s.dataset.topicSection !== select.value;
+      }
+    });
+  }
 </script>
 
 <style>
+  .panel-empty {
+    color: var(--text-dim);
+  }
   .topic-filter {
     display: inline-flex;
     align-items: center;
