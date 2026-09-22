@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   buildRecentActivity,
   computeOverview,
-  getBestCurrentStreak,
   getMostRecentEntry,
+  getOverallStreak,
   resolveTodayStatus,
 } from './dashboard.js';
 import type { Goal, LogEntry } from './streaks.js';
@@ -77,25 +77,23 @@ describe('resolveTodayStatus', () => {
   });
 });
 
-describe('getBestCurrentStreak', () => {
-  it('returns the longest-running current streak across topics', () => {
+describe('getOverallStreak', () => {
+  it('counts any topic touched toward the one overall streak', () => {
     const goals = [
       goal({ topic: 'dsa', scheduled_days: ['mon', 'tue', 'wed', 'thu', 'fri'] }),
-      goal({ topic: 'system-design', scheduled_days: ['sat', 'sun'] }),
+      goal({ topic: 'system-design', scheduled_days: ['mon', 'tue', 'wed', 'thu', 'fri'] }),
     ];
     const entries = [
       entry('2026-09-14', { topic: 'dsa' }),
-      entry('2026-09-15', { topic: 'dsa' }),
-      entry('2026-09-16', { topic: 'dsa' }), // 3-day dsa streak, today
-      entry('2026-09-12', { topic: 'system-design' }), // sat only, 1-day streak, broken by missed sun
+      entry('2026-09-15', { topic: 'system-design' }), // different topic, still keeps it alive
+      entry('2026-09-16', { topic: 'dsa' }), // today
     ];
 
-    const best = getBestCurrentStreak('ahmed', entries, goals, TODAY);
-    expect(best).toEqual({ topic: 'dsa', current: 3, longest: 3 });
+    expect(getOverallStreak('ahmed', entries, goals, TODAY)).toEqual({ current: 3, longest: 3 });
   });
 
   it('returns null for a person with no topics yet', () => {
-    expect(getBestCurrentStreak('nobody', [], [], TODAY)).toBeNull();
+    expect(getOverallStreak('nobody', [], [], TODAY)).toBeNull();
   });
 });
 
@@ -114,7 +112,7 @@ describe('computeOverview', () => {
     expect(overview.entriesLoggedToday).toBe(2);
     expect(overview.minutesLoggedToday).toBe(50);
     expect(overview.activePeopleCount).toBe(2); // ahmed + bea within the last 7 days, not carl
-    expect(overview.bestStreak).toEqual({ person: 'ahmed', topic: 'dsa', current: 3, longest: 3 });
+    expect(overview.bestStreak).toEqual({ person: 'ahmed', current: 3, longest: 3 });
   });
 
   it('reports no best streak when nobody has an active one', () => {

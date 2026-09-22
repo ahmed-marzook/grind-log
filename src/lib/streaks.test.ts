@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { calculateStreak, getScheduledDays, type Goal, type LogEntry } from './streaks.js';
+import {
+  calculateOverallStreak,
+  calculateStreak,
+  getScheduledDays,
+  type Goal,
+  type LogEntry,
+} from './streaks.js';
 
 // Wednesday, matching the mon-fri schedule used below.
 const TODAY = new Date('2026-09-16T12:00:00.000Z');
@@ -132,5 +138,56 @@ describe('calculateStreak', () => {
     expect(dsa.current).toBe(2);
     expect(python.current).toBe(0); // missed today, so the streak is broken
     expect(python.longest).toBe(1);
+  });
+});
+
+describe('calculateOverallStreak', () => {
+  it('keeps the streak alive when a different topic is touched than the one scheduled', () => {
+    const goals = [
+      goal({ topic: 'dsa', scheduled_days: ['mon', 'tue', 'wed', 'thu', 'fri'] }),
+      goal({ topic: 'python', scheduled_days: ['mon', 'tue', 'wed', 'thu', 'fri'] }),
+    ];
+    const entries: LogEntry[] = [
+      entry('2026-09-14', { topic: 'dsa' }), // mon
+      entry('2026-09-15', { topic: 'python' }), // tue - only python touched
+      entry('2026-09-16', { topic: 'dsa' }), // wed - today
+    ];
+
+    const result = calculateOverallStreak(entries, goals, 'ahmed', TODAY);
+    expect(result.current).toBe(3);
+    expect(result.longest).toBe(3);
+  });
+
+  it('breaks when a scheduled day passes with nothing logged for any topic', () => {
+    const goals = [
+      goal({ topic: 'dsa', scheduled_days: ['mon', 'tue', 'wed', 'thu', 'fri'] }),
+      goal({ topic: 'python', scheduled_days: ['mon', 'tue', 'wed', 'thu', 'fri'] }),
+    ];
+    const entries: LogEntry[] = [
+      entry('2026-09-14', { topic: 'dsa' }), // mon
+      // tue 09-15 nothing logged for either topic
+      entry('2026-09-16', { topic: 'python' }), // wed - today
+    ];
+
+    const result = calculateOverallStreak(entries, goals, 'ahmed', TODAY);
+    expect(result.current).toBe(1);
+    expect(result.longest).toBe(1);
+  });
+
+  it('skips a day nothing is scheduled for anywhere, without breaking the streak', () => {
+    const goals = [goal({ topic: 'system-design', scheduled_days: ['sat', 'sun'] })];
+    const entries: LogEntry[] = [
+      entry('2026-09-12', { topic: 'system-design' }), // sat
+      entry('2026-09-13', { topic: 'system-design' }), // sun
+      // mon-wed (09-14..09-16) nothing scheduled for system-design at all
+    ];
+
+    const result = calculateOverallStreak(entries, goals, 'ahmed', TODAY);
+    expect(result.current).toBe(2);
+    expect(result.longest).toBe(2);
+  });
+
+  it('returns zero for a person with no topics at all', () => {
+    expect(calculateOverallStreak([], [], 'nobody', TODAY)).toEqual({ current: 0, longest: 0 });
   });
 });

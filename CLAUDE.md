@@ -262,12 +262,32 @@ Add `src/lib/streaks.ts` (pure functions, no Astro dependency):
   `scheduled_days` (every day should count), and two different topics
   for the same person with different schedules (must not bleed into
   each other).
+- `calculateOverallStreak(entries, goals, person, today)` — the
+  headline streak (dashboard card, top of the calendar page): any topic
+  touched (completed or excused) keeps it alive, even a topic that
+  wasn't itself scheduled that day — "any goal touched" is deliberately
+  more permissive than one topic's own streak. A day only matters at
+  all if at least one of the person's topics schedules it (union across
+  topics); a day none of them schedule is skipped, same rule as
+  `calculateStreak`. Drilling into one topic (the calendar page's topic
+  filter) shows that topic's own `calculateStreak` result instead —
+  don't blend the two.
 
 ## Task 2: calendar view (`[person]/calendar.astro`)
-GitHub-contributions-style heatmap, filterable by topic (topics come
-from that person's own `logs`/`goals` entries — populate the filter
-dynamically, never from a static list). Four visually distinct states
-per day:
+Two sections, both GitHub-contributions-style heatmaps:
+- **Overall activity** (top) — every topic rolled into one heatmap +
+  streak, from `buildOverallCalendarDays`/`calculateOverallStreak` — any
+  topic touched that day shows up, matching the "any goal touched"
+  streak also shown on the dashboard. Spans a full year back by
+  default, capped to the person's actual earliest activity if they have
+  less history than that (a fixed one-year lookback would otherwise
+  paint every day before their first topic even existed as "missed").
+- **By topic** (below) — the original per-topic view: a dropdown
+  (topics come from that person's own `logs`/`goals` entries — populate
+  it dynamically, never from a static list) filtering to one topic's
+  own heatmap + streak, from `buildCalendarDays`/`calculateStreak`.
+
+Both heatmaps use the same four visually distinct day states:
 - **Completed** — filled, intensity scaled by `minutes`
 - **Excused** — a genuinely different fill (different hue or pattern,
   not just a lighter "completed") with the reason visible on hover/tap
@@ -275,8 +295,13 @@ per day:
 - **Not scheduled** — muted/near-transparent, shouldn't visually
   compete with the other three
 
-Show current + longest streak per topic near the top, from
-`calculateStreak`.
+`buildOverallCalendarDays`' per-day rollup priority is **completed >
+excused > missed > not-scheduled** — the opposite of
+`resolveTodayStatus`'s "missed wins." That's deliberate, not a copy-paste
+slip: `resolveTodayStatus` surfaces what still needs attention *today*,
+while this one records what already happened on a given historical day,
+where "any goal touched" should read as completed even if some other
+unrelated topic was also scheduled and skipped that day.
 
 Rendered with **ApexCharts** (`apexcharts`, plain JS, no framework) as
 a `type: 'heatmap'` chart — 7 series (Sun–Sat) x N week-columns, one
@@ -303,6 +328,12 @@ scale, which is why the setup differs from a typical Apex heatmap:
     the site (`getComputedStyle(document.documentElement)` for
     `--not-scheduled`/`--missed-border`/`--excused`, etc.) rather than
     duplicated — keep it that way if the palette ever changes.
+  - Y-axis (weekday row) labels come from `series[].name`, and blanking
+    some of them to get GitHub's sparse Mon/Wed/Fri-only look (tried
+    `''`, `' '`, and distinct zero-width-space strings) made *all* seven
+    rows' labels disappear, not just the blanked ones. Not worth
+    fighting further for a cosmetic label-density difference — all 7
+    rows are labeled (`Sun`…`Sat`) instead.
 
 The dashboard's small per-person mini-calendar (`index.astro`) stays a
 plain CSS grid of `<span>`s, not ApexCharts — it's a decorative,
@@ -341,10 +372,12 @@ Each card shows, at a glance:
 - **Today's status** — resolved per their scheduled goals for today:
   completed / excused / missed / nothing scheduled today. Reuse the
   same day-state logic from Task 1/2, don't reimplement it.
-- **Current streak** — if they have more than one topic, show the
-  longest-running current streak rather than every topic's number;
-  the card is a summary, not the full picture (that's what clicking
-  through is for).
+- **Current streak** — the person's overall streak (`getOverallStreak`
+  in `src/lib/dashboard.ts`, wrapping `calculateOverallStreak`): any
+  topic touched keeps it alive, not just their single best-performing
+  topic. Matches the headline streak shown atop the calendar page's
+  "Overall activity" section — the card is a summary, not the full
+  picture (that's what clicking through to a specific topic is for).
 - **Goals summary** — a small count by status, e.g. "2 in progress,
   1 achieved" (same data as the `stats.astro` rollup — pull from the
   same source, don't duplicate the aggregation logic in two places).
@@ -375,8 +408,9 @@ into that person's `calendar.astro` and `goals.astro`.
   kept as the onboarding template, not deleted.
 - Streak calculation has test coverage for the four cases above,
   entirely goal-driven with no hardcoded schedule.
-- Calendar renders all four day-states distinctly, filterable by topic
-  with topics populated dynamically.
+- Calendar renders all four day-states distinctly, with an overall
+  cross-topic heatmap/streak plus a per-topic view filterable by topic,
+  topics populated dynamically.
 - Goals board shows all four statuses, including achieved/cancelled,
   and rolls up into `stats.astro`.
 - Dashboard (`index.astro`) shows one clickable card per person with

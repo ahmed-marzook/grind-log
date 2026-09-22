@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildCalendarDays,
+  buildOverallCalendarDays,
   consistencyForWindow,
   formatDayTooltip,
   getPersonTopics,
@@ -100,6 +101,72 @@ describe('buildCalendarDays', () => {
     expect(pythonDays[0].state).toBe('completed');
     expect(pythonDays[0].title).toBe('Decorators');
     expect(pythonDays[0].minutes).toBe(45);
+  });
+});
+
+describe('buildOverallCalendarDays', () => {
+  it('rolls up to completed when any topic was completed that day, summing minutes', () => {
+    const goals = [goal({ topic: 'dsa' }), goal({ topic: 'python' })];
+    const entries: LogEntry[] = [
+      entry('2026-09-14', { topic: 'dsa', minutes: 30, title: 'Trie' }),
+      entry('2026-09-14', { topic: 'python', minutes: 45, title: 'Decorators' }),
+    ];
+
+    const days = buildOverallCalendarDays(entries, goals, 'ahmed', {
+      from: new Date('2026-09-14T00:00:00.000Z'),
+      to: new Date('2026-09-14T00:00:00.000Z'),
+    });
+
+    expect(days[0].state).toBe('completed');
+    expect(days[0].minutes).toBe(75);
+    expect(days[0].title).toBe('Trie, Decorators');
+  });
+
+  it('prefers completed over missed when topics disagree — any goal touched counts', () => {
+    const goals = [
+      goal({ topic: 'dsa', scheduled_days: ['mon', 'tue', 'wed', 'thu', 'fri'] }),
+      goal({ topic: 'system-design', scheduled_days: ['mon', 'tue', 'wed', 'thu', 'fri'] }),
+    ];
+    const entries: LogEntry[] = [entry('2026-09-14', { topic: 'dsa' })]; // system-design left unlogged
+
+    const days = buildOverallCalendarDays(entries, goals, 'ahmed', {
+      from: new Date('2026-09-14T00:00:00.000Z'),
+      to: new Date('2026-09-14T00:00:00.000Z'),
+    });
+
+    expect(days[0].state).toBe('completed');
+  });
+
+  it('marks the day missed only when nothing was completed or excused anywhere', () => {
+    const goals = [
+      goal({ topic: 'dsa', scheduled_days: ['mon', 'tue', 'wed', 'thu', 'fri'] }),
+      goal({ topic: 'system-design', scheduled_days: ['mon', 'tue', 'wed', 'thu', 'fri'] }),
+    ];
+
+    const days = buildOverallCalendarDays([], goals, 'ahmed', {
+      from: new Date('2026-09-14T00:00:00.000Z'),
+      to: new Date('2026-09-14T00:00:00.000Z'),
+    });
+
+    expect(days[0].state).toBe('missed');
+  });
+
+  it('falls back to not-scheduled when nothing is scheduled anywhere that day', () => {
+    const goals = [goal({ topic: 'dsa', scheduled_days: ['mon'] })];
+    const days = buildOverallCalendarDays([], goals, 'ahmed', {
+      from: new Date('2026-09-15T00:00:00.000Z'), // tue
+      to: new Date('2026-09-15T00:00:00.000Z'),
+    });
+
+    expect(days[0].state).toBe('not-scheduled');
+  });
+
+  it('returns an empty array for a person with no topics', () => {
+    const days = buildOverallCalendarDays([], [], 'nobody', {
+      from: new Date('2026-09-14T00:00:00.000Z'),
+      to: new Date('2026-09-14T00:00:00.000Z'),
+    });
+    expect(days).toEqual([]);
   });
 });
 

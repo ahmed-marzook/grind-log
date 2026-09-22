@@ -1,4 +1,6 @@
-import { getScheduledDays, type Goal, type LogEntry } from './streaks.js';
+import { getPersonTopics, getScheduledDays, type Goal, type LogEntry } from './streaks.js';
+
+export { getPersonTopics };
 
 export type DayState = 'completed' | 'excused' | 'missed' | 'not-scheduled';
 
@@ -22,24 +24,6 @@ const DAY_INDEX_TO_ABBREV = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as
 
 function dayAbbrev(date: Date) {
   return DAY_INDEX_TO_ABBREV[date.getUTCDay()];
-}
-
-/**
- * Topics a person actually uses, drawn from their own logs and goals —
- * never a static list — for populating a filter dynamically. `idea`
- * goals are excluded: they're a future wishlist, not something being
- * tracked yet, so they shouldn't spawn a topic that shows up as
- * permanently "missed" on the calendar.
- */
-export function getPersonTopics(person: string, entries: LogEntry[], goals: Goal[]): string[] {
-  const topics = new Set<string>();
-  for (const entry of entries) {
-    if (entry.person === person && entry.topic) topics.add(entry.topic);
-  }
-  for (const goal of goals) {
-    if (goal.person === person && goal.status !== 'idea') topics.add(goal.topic);
-  }
-  return Array.from(topics).sort();
 }
 
 /**
@@ -91,6 +75,65 @@ export function buildCalendarDays(
     });
 
     cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+
+  return days;
+}
+
+/**
+ * The same day-by-day heatmap as `buildCalendarDays`, but rolled up
+ * across every topic a person has instead of one — the "overall
+ * activity" view (headline streak + top-of-page heatmap), where any
+ * topic touched that day should show up, not just one.
+ *
+ * Per day, completed wins if any topic was completed, then excused, then
+ * missed, then not-scheduled — "any goal touched" should read as
+ * completed even if some other unrelated topic was also scheduled and
+ * skipped that day. This is the opposite priority from
+ * `resolveTodayStatus`'s "missed wins," which is deliberately different:
+ * that one surfaces what still needs attention *today*, this one records
+ * what already happened on a given day. A completed day's minutes/title
+ * are summed/joined across every topic completed that day, so the
+ * heatmap's intensity reflects total time studied, not just one topic's.
+ */
+export function buildOverallCalendarDays(
+  entries: LogEntry[],
+  goals: Goal[],
+  person: string,
+  range: { from: Date; to: Date }
+): CalendarDay[] {
+  const topics = getPersonTopics(person, entries, goals);
+  if (topics.length === 0) return [];
+
+  const perTopicDays = topics.map((topic) => buildCalendarDays(entries, goals, person, topic, range));
+
+  const days: CalendarDay[] = [];
+  const dayCount = perTopicDays[0].length;
+  for (let i = 0; i < dayCount; i++) {
+    const todaysDays = perTopicDays.map((topicDays) => topicDays[i]);
+    const date = todaysDays[0].date;
+
+    let state: DayState;
+    if (todaysDays.some((d) => d.state === 'completed')) state = 'completed';
+    else if (todaysDays.some((d) => d.state === 'excused')) state = 'excused';
+    else if (todaysDays.some((d) => d.state === 'missed')) state = 'missed';
+    else state = 'not-scheduled';
+
+    let minutes: number | undefined;
+    let title: string | undefined;
+    let reason: string | undefined;
+    if (state === 'completed') {
+      const completedDays = todaysDays.filter((d) => d.state === 'completed');
+      minutes = completedDays.reduce((sum, d) => sum + (d.minutes ?? 0), 0);
+      title = completedDays
+        .map((d) => d.title)
+        .filter((t): t is string => Boolean(t))
+        .join(', ');
+    } else if (state === 'excused') {
+      reason = todaysDays.find((d) => d.state === 'excused')?.reason;
+    }
+
+    days.push({ date, state, minutes, title, reason });
   }
 
   return days;
