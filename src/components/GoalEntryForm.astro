@@ -4,7 +4,6 @@ interface Props {
   topics: string[];
 }
 const { person, topics } = Astro.props;
-const today = new Date().toISOString().slice(0, 10);
 const datalistId = `goal-topic-options-${person}`;
 const DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
 ---
@@ -18,7 +17,7 @@ const DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
     ideas section below, not as an active goal.
   </p>
 
-  <form class="goal-entry-form" data-person={person} data-updated={today}>
+  <form class="goal-entry-form" data-person={person}>
     <div class="goal-entry-grid">
       <label class="goal-entry-field">
         <span>Topic</span>
@@ -102,10 +101,10 @@ const DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
 
 <script>
   import { buildGoalEntryUrl, type GoalEntryDay, type GoalEntryStatus } from '../lib/github.js';
+  import { todayDateKey } from '../lib/format.js';
 
   for (const form of document.querySelectorAll<HTMLFormElement>('.goal-entry-form')) {
     const person = form.dataset.person!;
-    const updated = form.dataset.updated!;
     const topicInput = form.querySelector<HTMLInputElement>('input[name="topic"]')!;
     const titleInput = form.querySelector<HTMLInputElement>('input[name="title"]')!;
     const statusSelect = form.querySelector<HTMLSelectElement>('select[name="status"]')!;
@@ -154,7 +153,7 @@ const DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
         started: startedInput.value,
         targetDate: targetDateInput.value,
         notes: notesInput.value.trim(),
-        updated,
+        updated: todayDateKey(),
       });
 
       window.open(url, '_blank', 'noopener');

@@ -277,12 +277,16 @@ const cards = persons.map((person) => {
                       mostRecentEntry.status === 'completed' ? (
                         <>
                           {mostRecentEntry.title} ·{' '}
-                          {formatRelativeDay(mostRecentEntry.date, today)}
+                          <span class="relative-day" data-date={mostRecentEntry.date.toISOString()}>
+                            {formatRelativeDay(mostRecentEntry.date, today)}
+                          </span>
                         </>
                       ) : (
                         <>
                           Excused ({mostRecentEntry.reason}) ·{' '}
-                          {formatRelativeDay(mostRecentEntry.date, today)}
+                          <span class="relative-day" data-date={mostRecentEntry.date.toISOString()}>
+                            {formatRelativeDay(mostRecentEntry.date, today)}
+                          </span>
                         </>
                       )
                     ) : (
@@ -324,7 +328,9 @@ const cards = persons.map((person) => {
           <ul class="activity-feed">
             {recentActivity.map((item) => (
               <li class="activity-row">
-                <span class="activity-when">{formatRelativeDay(item.date, today)}</span>
+                <span class="activity-when relative-day" data-date={item.date.toISOString()}>
+                  {formatRelativeDay(item.date, today)}
+                </span>
                 <span class="activity-body">
                   <a href={`${base}${item.person}/`}>{item.person}</a>
                   {item.status === 'completed' ? (
@@ -381,6 +387,18 @@ const cards = persons.map((person) => {
 </Base>
 
 <script>
+  import { formatRelativeDay } from '../lib/format.js';
+
+  // Labels are rendered with the build-time date server-side, then
+  // corrected here against the viewer's real clock — this is a
+  // statically-built site, so pages can be viewed long after they were
+  // built and "today"/"yesterday" would otherwise drift stale.
+  for (const el of document.querySelectorAll<HTMLElement>('.relative-day')) {
+    const iso = el.dataset.date;
+    if (!iso) continue;
+    el.textContent = formatRelativeDay(new Date(iso));
+  }
+
   const STORAGE_KEY = 'grind-log:people-view';
   const grid = document.querySelector<HTMLUListElement>('#people-grid');
   const buttons = document.querySelectorAll<HTMLButtonElement>('[data-view-btn]');

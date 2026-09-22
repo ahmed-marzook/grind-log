@@ -39,7 +39,7 @@ const recentWithNotes = await Promise.all(
 <Base title={person}>
   <h1>{person}</h1>
   <PersonNav person={person} active="entries" />
-  <LogEntryForm person={person} topics={topics} today={new Date()} />
+  <LogEntryForm person={person} topics={topics} />
   {recent.length === 0 && <p>No entries yet.</p>}
   <ul class="feed">
     {

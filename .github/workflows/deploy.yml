@@ -9,6 +9,12 @@ on:
   push:
     branches: ["main"]
 
+  # Rebuilds daily even with no new commits — this is a statically-built
+  # site, so "today"-relative UI (streaks, today's status, dashboard
+  # stats) is only as fresh as the last build.
+  schedule:
+    - cron: "0 5 * * *"
+
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
