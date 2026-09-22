@@ -1,8 +1,6 @@
 ---
 import Base from '../layouts/Base.astro';
 import { onboardingGuideUrl } from '../lib/github.js';
-
-const today = new Date().toISOString().slice(0, 10);
 ---
 
 <Base title="Onboarding">
@@ -32,7 +30,7 @@ const today = new Date().toISOString().slice(0, 10);
         it'll open a prefilled file on GitHub for you to commit:
       </p>
 
-      <form class="starter-form" data-updated={today}>
+      <form class="starter-form">
         <label class="starter-field">
           <span>Your slug</span>
           <input
@@ -99,10 +97,10 @@ const today = new Date().toISOString().slice(0, 10);
 
 <script>
   import { buildGoalEntryUrl } from '../lib/github.js';
+  import { todayDateKey } from '../lib/format.js';
 
   const form = document.querySelector<HTMLFormElement>('.starter-form');
   if (form) {
-    const updated = form.dataset.updated!;
     const personInput = form.querySelector<HTMLInputElement>('input[name="person"]')!;
     const topicInput = form.querySelector<HTMLInputElement>('input[name="topic"]')!;
     const titleInput = form.querySelector<HTMLInputElement>('input[name="title"]')!;
@@ -128,7 +126,7 @@ const today = new Date().toISOString().slice(0, 10);
         return;
       }
 
-      const url = buildGoalEntryUrl({ person, topic, title, updated });
+      const url = buildGoalEntryUrl({ person, topic, title, updated: todayDateKey() });
       window.open(url, '_blank', 'noopener');
     });
   }

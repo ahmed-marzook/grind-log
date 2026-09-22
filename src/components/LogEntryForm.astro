@@ -2,15 +2,13 @@
 interface Props {
   person: string;
   topics: string[];
-  today: Date;
 }
-const { person, topics, today } = Astro.props;
-const dateKey = today.toISOString().slice(0, 10);
+const { person, topics } = Astro.props;
 const datalistId = `log-topic-options-${person}`;
 ---
 
 <section class="panel log-today-panel" id="log-today">
-  <h2 class="section-heading">Log today · {dateKey}</h2>
+  <h2 class="section-heading">Log today · <span data-today-date>…</span></h2>
   <p class="panel-copy">
     Fill this in, then finish the commit on GitHub — there's no backend, so
     the file still has to land in the repo, but the fields below get baked
@@ -18,7 +16,7 @@ const datalistId = `log-topic-options-${person}`;
     for what each field means and its limits.
   </p>
 
-  <form class="log-form" data-person={person} data-date={dateKey}>
+  <form class="log-form" data-person={person}>
     <fieldset class="log-form-status">
       <legend class="sr-only">Status</legend>
       <label class="log-status-option">
@@ -88,10 +86,14 @@ const datalistId = `log-topic-options-${person}`;
 
 <script>
   import { buildLogEntryUrl } from '../lib/github.js';
+  import { todayDateKey } from '../lib/format.js';
+
+  for (const dateLabel of document.querySelectorAll<HTMLElement>('[data-today-date]')) {
+    dateLabel.textContent = todayDateKey();
+  }
 
   for (const form of document.querySelectorAll<HTMLFormElement>('.log-form')) {
     const person = form.dataset.person!;
-    const date = form.dataset.date!;
     const statusRadios = form.querySelectorAll<HTMLInputElement>('input[name="status"]');
     const completedFields = form.querySelector<HTMLElement>('[data-fields="completed"]')!;
     const excusedFields = form.querySelector<HTMLElement>('[data-fields="excused"]')!;
@@ -149,7 +151,7 @@ const datalistId = `log-topic-options-${person}`;
 
       const url = buildLogEntryUrl({
         person,
-        date,
+        date: todayDateKey(),
         status,
         topic: topicInput.value.trim(),
         title: titleInput.value.trim(),
