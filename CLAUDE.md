@@ -17,7 +17,22 @@ anywhere in the code.
 - Deployed via GitHub Pages + `withastro/action`
 - No JS framework needed unless a feature genuinely requires client-side
   interactivity (e.g. hover tooltips on the calendar) — prefer Astro
-  islands with minimal JS over reaching for React.
+  islands with minimal JS over reaching for React. This is about
+  frameworks (React/Vue/etc.), not every dependency — see ApexCharts
+  below, a plain-JS chart library used directly in a client `<script>`,
+  no framework wrapper needed.
+- This is a **statically-built site rebuilt only on push** (plus a daily
+  scheduled rebuild — see `.github/workflows/deploy.yml`). Anything
+  computed from `new Date()` in Astro frontmatter is frozen to build
+  time and goes stale between rebuilds. Any "as of today" UI (today's
+  status, streaks, relative-day labels, the "Log today" date, the
+  calendar/heatmap) must be computed in a client `<script>` against the
+  viewer's real clock, not in frontmatter — see `src/lib/serialize.ts`
+  (`reviveLogEntries`/`reviveGoals`/`toScriptJson`) for the pattern:
+  embed the relevant content-collection entries as a JSON island,
+  revive them client-side, and re-run the same pure functions from
+  `src/lib/` (already written to accept `entries`/`goals`/`today` as
+  plain arguments, no Astro dependency) with `new Date()`.
 
 ## Hosting: GitHub Pages
 This is a **project site**, not a user/org site — it's served at
@@ -262,6 +277,47 @@ per day:
 
 Show current + longest streak per topic near the top, from
 `calculateStreak`.
+
+Rendered with **ApexCharts** (`apexcharts`, plain JS, no framework) as
+a `type: 'heatmap'` chart — 7 series (Sun–Sat) x N week-columns, one
+data point per day, entirely client-rendered (there's no server-side
+render path for a canvas/SVG chart on a static build). The four states
+(plus completed's 4 intensity levels) are encoded as small integer
+codes per day and mapped to exact colors via
+`plotOptions.heatmap.colorScale.ranges`, matched against `dayCode()` in
+the client script — this is a discrete state model, not a continuous
+scale, which is why the setup differs from a typical Apex heatmap:
+  - `colorScale.ranges` must be sorted ascending by `from`, or matching
+    silently breaks (Apex doesn't sort them for you).
+  - `enableShades: false` is required, or Apex perturbs even a
+    single-value range's color based on cell position, so declared
+    colors don't render as-given.
+  - `xaxis.categories` is ignored for this chart type — give each data
+    point its own `x` as the label string directly (see
+    `buildSeries()`) instead.
+  - `chart.animations.enabled: false` — this is a status dashboard, not
+    a decorative chart; the default "grow-in" animation is unnecessary
+    and, if you're checking rendered state in a test right after
+    `chart.render()`, defeats you doing so.
+  - Colors are read from the same CSS custom properties as the rest of
+    the site (`getComputedStyle(document.documentElement)` for
+    `--not-scheduled`/`--missed-border`/`--excused`, etc.) rather than
+    duplicated — keep it that way if the palette ever changes.
+
+The dashboard's small per-person mini-calendar (`index.astro`) stays a
+plain CSS grid of `<span>`s, not ApexCharts — it's a decorative,
+tooltip-only peek repeated once per person card, and a chart instance
+per card isn't worth the weight. If it ever needs the same visual
+treatment as the full calendar, that's a deliberate call to make then,
+not an oversight now.
+
+Gotcha specific to this codebase: any element created client-side with
+`document.createElement()` — the mini-calendar's `<span>`s, e.g. —
+never gets Astro's scoped-style `data-astro-cid-*` attribute, so a
+plain (scoped) selector in that component's `<style>` block silently
+never matches it (the element renders with no size/no color, not an
+error). Wrap those specific selectors in `:global(...)` — see
+`.mini-day`/`.mini-day--*` in `index.astro` for the pattern.
 
 ## Task 3: goals board (`[person]/goals.astro`)
 Show each person's goals grouped or filterable by `status`
