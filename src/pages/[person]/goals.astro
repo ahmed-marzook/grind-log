@@ -4,7 +4,10 @@ import Base from '../../layouts/Base.astro';
 import PersonNav from '../../components/PersonNav.astro';
 import GoalEntryForm from '../../components/GoalEntryForm.astro';
 import { getPersonTopics } from '../../lib/calendar.js';
-import { groupBy, STATUS_ORDER } from '../../lib/goals.js';
+import { formatMinutes } from '../../lib/format.js';
+import { goalFileUrl } from '../../lib/github.js';
+import { describeGoalTimeline, getGoalActivity, groupBy, STATUS_ORDER } from '../../lib/goals.js';
+import { Icon } from 'astro-icon/components';
 import { getAllPersons } from '../../lib/people.js';
 
 export async function getStaticPaths() {
@@ -23,8 +26,15 @@ const topics = getPersonTopics(
   goals.map((g) => g.data)
 );
 
+const logEntries = logs.map((l) => l.data);
 const goalsWithContent = await Promise.all(
-  goals.map(async (goal) => ({ goal, Content: (await goal.render()).Content }))
+  goals.map(async (goal) => ({
+    goal,
+    Content: (await goal.render()).Content,
+    activity: getGoalActivity(goal.data, logEntries),
+    // Build-time snapshot; corrected client-side against the real date.
+    timeline: describeGoalTimeline(goal.data, new Date()),
+  }))
 );
 
 const grouped = groupBy(goalsWithContent, (item) => item.goal.data.status, STATUS_ORDER);
@@ -64,7 +74,7 @@ function formatDate(date: Date): string {
               {STATUS_LABEL[status]} ({items.length})
             </summary>
             <ul class="goal-list">
-              {items.map(({ goal, Content }) => (
+              {items.map(({ goal, Content, activity, timeline }) => (
                 <li class="goal-card">
                   <div class="goal-header">
                     <h2>{goal.data.title}</h2>
@@ -77,6 +87,28 @@ function formatDate(date: Date): string {
                       {goal.data.target_date && <>Target {formatDate(goal.data.target_date)}</>}
                     </p>
                   )}
+                  <p class="goal-progress">
+                    <span
+                      class={`goal-timeline goal-timeline--${timeline?.tone ?? 'neutral'}`}
+                      data-goal-timeline={JSON.stringify({
+                        status: goal.data.status,
+                        started: goal.data.started?.toISOString(),
+                        target_date: goal.data.target_date?.toISOString(),
+                      })}
+                      hidden={!timeline}
+                    >
+                      {timeline?.label}
+                    </span>
+                    <span class="goal-activity">
+                      {activity.sessions === 0
+                        ? 'No sessions logged yet'
+                        : `${activity.sessions} session${activity.sessions === 1 ? '' : 's'} · ${formatMinutes(activity.minutes)} logged`}
+                    </span>
+                    <a class="goal-source" href={goalFileUrl(goal.id)} target="_blank" rel="noopener">
+                      <Icon name="lucide:github" class="goal-source-icon" aria-hidden="true" />
+                      Edit on GitHub
+                    </a>
+                  </p>
                   <div class="goal-body">
                     <Content />
                   </div>
@@ -104,6 +136,12 @@ function formatDate(date: Date): string {
                 <h2>{goal.data.title}</h2>
                 <span class="goal-topic">{goal.data.topic}</span>
               </div>
+              <p class="goal-progress">
+                <a class="goal-source" href={goalFileUrl(goal.id)} target="_blank" rel="noopener">
+                  <Icon name="lucide:github" class="goal-source-icon" aria-hidden="true" />
+                  Edit on GitHub
+                </a>
+              </p>
               <div class="goal-body">
                 <Content />
               </div>
@@ -115,7 +153,70 @@ function formatDate(date: Date): string {
   }
 </Base>
 
+<script>
+  import { describeGoalTimeline } from '../../lib/goals.js';
+  import type { Goal } from '../../lib/streaks.js';
+
+  // "Day N · X days left / overdue" depends on today's date, so recompute
+  // it against the viewer's real clock (see CLAUDE.md) rather than trust
+  // the build-time snapshot.
+  const today = new Date();
+  for (const el of document.querySelectorAll<HTMLElement>('[data-goal-timeline]')) {
+    const raw = JSON.parse(el.dataset.goalTimeline!) as {
+      status: Goal['status'];
+      started?: string;
+      target_date?: string;
+    };
+    const timeline = describeGoalTimeline(
+      {
+        status: raw.status,
+        started: raw.started ? new Date(raw.started) : undefined,
+        target_date: raw.target_date ? new Date(raw.target_date) : undefined,
+      },
+      today
+    );
+    el.hidden = !timeline;
+    el.textContent = timeline?.label ?? '';
+    el.className = `goal-timeline goal-timeline--${timeline?.tone ?? 'neutral'}`;
+  }
+</script>
+
 <style>
+  .goal-progress {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem 0.9rem;
+    margin: 0.4rem 0 0;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+  }
+  .goal-timeline {
+    font-weight: 600;
+  }
+  .goal-timeline[hidden] {
+    display: none;
+  }
+  .goal-timeline--soon {
+    color: var(--excused);
+  }
+  .goal-timeline--overdue {
+    color: var(--missed-border);
+  }
+  .goal-source {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin-left: auto;
+    color: var(--text-dim);
+  }
+  .goal-source:hover {
+    color: var(--text);
+  }
+  .goal-source-icon {
+    width: 0.9em;
+    height: 0.9em;
+  }
   .status-group {
     margin-bottom: 1.5rem;
   }

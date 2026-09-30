@@ -32,3 +32,12 @@ export function formatRelativeDay(date: Date, today: Date = new Date()): string 
   if (diffDays === -1) return 'tomorrow';
   return `in ${-diffDays} days`;
 }
+
+/** Compact duration label: 45 → "45m", 90 → "1h 30m", 120 → "2h". */
+export function formatMinutes(minutes: number): string {
+  const total = Math.max(0, Math.round(minutes));
+  const hours = Math.floor(total / 60);
+  const mins = total % 60;
+  if (hours === 0) return `${mins}m`;
+  return mins === 0 ? `${hours}h` : `${hours}h ${mins}m`;
+}
