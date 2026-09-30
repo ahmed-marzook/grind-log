@@ -17,6 +17,15 @@ export function personGoalsUrl(person: string): string {
   return `${REPO_URL}/tree/${BRANCH}/src/content/goals/${person}`;
 }
 
+/**
+ * The GitHub page for a single log entry's markdown file. `id` is the
+ * content-collection entry id — its path relative to `src/content/logs/`
+ * (e.g. `example-person/2026-09-15.md`).
+ */
+export function logFileUrl(id: string): string {
+  return `${REPO_URL}/blob/${BRANCH}/src/content/logs/${id}`;
+}
+
 export function onboardingGuideUrl(): string {
   return `${REPO_URL}/blob/${BRANCH}/CLAUDE.md#onboarding-a-new-person`;
 }

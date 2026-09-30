@@ -3,6 +3,7 @@ import {
   buildGoalEntryUrl,
   buildLogEntryFilename,
   buildLogEntryUrl,
+  logFileUrl,
   onboardingGuideUrl,
   personGoalsUrl,
   personLogsUrl,
@@ -18,6 +19,12 @@ describe('github link builders', () => {
   it('points at a person\'s goals folder on the main branch', () => {
     expect(personGoalsUrl('ahmed-marzook')).toBe(
       'https://github.com/ahmed-marzook/grind-log/tree/main/src/content/goals/ahmed-marzook'
+    );
+  });
+
+  it('points at a single log entry file on the main branch', () => {
+    expect(logFileUrl('example-person/2026-09-16-dsa.md')).toBe(
+      'https://github.com/ahmed-marzook/grind-log/blob/main/src/content/logs/example-person/2026-09-16-dsa.md'
     );
   });
 
