@@ -26,6 +26,15 @@ export function logFileUrl(id: string): string {
   return `${REPO_URL}/blob/${BRANCH}/src/content/logs/${id}`;
 }
 
+/**
+ * The GitHub page for a single goal's markdown file. `id` is the
+ * content-collection entry id — its path relative to `src/content/goals/`
+ * (e.g. `example-person/claude-cert.md`).
+ */
+export function goalFileUrl(id: string): string {
+  return `${REPO_URL}/blob/${BRANCH}/src/content/goals/${id}`;
+}
+
 export function onboardingGuideUrl(): string {
   return `${REPO_URL}/blob/${BRANCH}/CLAUDE.md#onboarding-a-new-person`;
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatRelativeDay } from './format.js';
+import { formatMinutes, formatRelativeDay } from './format.js';
 
 const TODAY = new Date('2026-09-15T18:00:00.000Z');
 
@@ -14,5 +14,14 @@ describe('formatRelativeDay', () => {
 
   it('labels earlier days with a day count', () => {
     expect(formatRelativeDay(new Date('2026-09-10T00:00:00.000Z'), TODAY)).toBe('5 days ago');
+  });
+});
+
+describe('formatMinutes', () => {
+  it('formats minutes as a compact duration', () => {
+    expect(formatMinutes(0)).toBe('0m');
+    expect(formatMinutes(45)).toBe('45m');
+    expect(formatMinutes(60)).toBe('1h');
+    expect(formatMinutes(90)).toBe('1h 30m');
   });
 });

@@ -6,6 +6,10 @@ import LogEntryForm from '../../components/LogEntryForm.astro';
 import { getPersonTopics } from '../../lib/calendar.js';
 import { getAllPersons } from '../../lib/people.js';
 import { logFileUrl } from '../../lib/github.js';
+import { formatMinutes } from '../../lib/format.js';
+import { summarizeMinutes } from '../../lib/minutes.js';
+import { toScriptJson } from '../../lib/serialize.js';
+import { getTagCounts } from '../../lib/tags.js';
 import { Icon } from 'astro-icon/components';
 
 export async function getStaticPaths() {
@@ -25,28 +29,98 @@ const topics = getPersonTopics(
 );
 const sorted = [...logs].sort((a, b) => b.data.date.getTime() - a.data.date.getTime());
 
+// Only the most recent entries show by default. Every entry is still
+// rendered (the rest hidden) so the tag filter can reach older ones
+// without a separate page.
 const RECENT_ENTRIES_LIMIT = 10;
-const recent = sorted.slice(0, RECENT_ENTRIES_LIMIT);
+const tagCounts = getTagCounts(sorted.map((l) => l.data));
 
 // The markdown body is an optional short journal note — what was learned,
 // or any other context. Only render it for entries that actually wrote one.
-const recentWithNotes = await Promise.all(
-  recent.map(async (entry) => ({
+const entriesWithNotes = await Promise.all(
+  sorted.map(async (entry) => ({
     entry,
     Notes: entry.body?.trim() ? (await entry.render()).Content : null,
   }))
 );
+
+// Build-time snapshot for the no-JS fallback; the "last 7/30 days" numbers
+// are recomputed client-side against the viewer's real date below.
+const minutes = summarizeMinutes(
+  logs.map((l) => l.data),
+  person,
+  new Date()
+);
+const minutesPayload = toScriptJson({ person, entries: logs.map((l) => l.data) });
 ---
 
 <Base title={person}>
   <h1>{person}</h1>
   <PersonNav person={person} active="entries" />
   <LogEntryForm person={person} topics={topics} />
-  {recent.length === 0 && <p>No entries yet.</p>}
+
+  {
+    minutes.sessions > 0 && (
+      <section class="time-spent" aria-labelledby="time-spent-heading">
+        <h2 id="time-spent-heading" class="section-title">Time spent</h2>
+        <div class="time-totals">
+          <div class="time-total">
+            <span class="time-value" data-minutes="last7">{formatMinutes(minutes.last7)}</span>
+            <span class="time-label">Last 7 days</span>
+          </div>
+          <div class="time-total">
+            <span class="time-value" data-minutes="last30">{formatMinutes(minutes.last30)}</span>
+            <span class="time-label">Last 30 days</span>
+          </div>
+          <div class="time-total">
+            <span class="time-value">{formatMinutes(minutes.total)}</span>
+            <span class="time-label">
+              All time · {minutes.sessions} session{minutes.sessions === 1 ? '' : 's'}
+            </span>
+          </div>
+        </div>
+        <ul class="topic-minutes">
+          {minutes.byTopic.map(({ topic, minutes: topicMinutes, sessions }) => (
+            <li>
+              <span class="topic-name">{topic}</span>
+              <span class="topic-bar" aria-hidden="true">
+                <span style={`width: ${(topicMinutes / (minutes.byTopic[0].minutes || 1)) * 100}%`} />
+              </span>
+              <span class="topic-value">
+                {formatMinutes(topicMinutes)} · {sessions} session{sessions === 1 ? '' : 's'}
+              </span>
+            </li>
+          ))}
+        </ul>
+        <script type="application/json" id="minutes-data" is:inline set:html={minutesPayload} />
+      </section>
+    )
+  }
+
+  <div class="feed-heading-row">
+    <h2 class="section-title" id="feed-heading">Recent entries</h2>
+    {
+      tagCounts.length > 0 && (
+        <div class="tag-filter" role="group" aria-label="Filter entries by tag">
+          {tagCounts.map(({ tag, count }) => (
+            <button type="button" class="tag-chip" data-tag-filter={tag} aria-pressed="false">
+              #{tag} <span class="tag-count">{count}</span>
+            </button>
+          ))}
+        </div>
+      )
+    }
+  </div>
+  {sorted.length === 0 && <p>No entries yet.</p>}
   <ul class="feed">
     {
-      recentWithNotes.map(({ entry, Notes }) => (
-        <li class={`entry entry--${entry.data.status}`}>
+      entriesWithNotes.map(({ entry, Notes }, index) => (
+        <li
+          class={`entry entry--${entry.data.status}`}
+          data-tags={JSON.stringify(entry.data.tags ?? [])}
+          data-recent={index < RECENT_ENTRIES_LIMIT ? 'true' : 'false'}
+          hidden={index >= RECENT_ENTRIES_LIMIT}
+        >
           <div class="entry-header">
             <time>{entry.data.date.toISOString().slice(0, 10)}</time>
             <a class="entry-source" href={logFileUrl(entry.id)} target="_blank" rel="noopener">
@@ -68,6 +142,15 @@ const recentWithNotes = await Promise.all(
           ) : (
             <p class="entry-excused">Excused — {entry.data.reason}</p>
           )}
+          {entry.data.tags && entry.data.tags.length > 0 && (
+            <div class="entry-tags">
+              {entry.data.tags.map((tag) => (
+                <button type="button" class="tag-chip tag-chip--small" data-tag-filter={tag}>
+                  #{tag}
+                </button>
+              ))}
+            </div>
+          )}
           {Notes && (
             <div class="entry-notes">
               <Notes />
@@ -79,7 +162,160 @@ const recentWithNotes = await Promise.all(
   </ul>
 </Base>
 
+<script>
+  import { formatMinutes } from '../../lib/format.js';
+  import { summarizeMinutes } from '../../lib/minutes.js';
+  import { reviveLogEntries, type SerializedLogEntry } from '../../lib/serialize.js';
+
+  // "Last 7/30 days" depend on today's date, so correct the build-time
+  // snapshot against the viewer's real clock (see CLAUDE.md).
+  const minutesDataEl = document.querySelector<HTMLScriptElement>('#minutes-data');
+  if (minutesDataEl) {
+    const raw = JSON.parse(minutesDataEl.textContent!) as {
+      person: string;
+      entries: SerializedLogEntry[];
+    };
+    const summary = summarizeMinutes(reviveLogEntries(raw.entries), raw.person, new Date());
+    for (const el of document.querySelectorAll<HTMLElement>('[data-minutes]')) {
+      const key = el.dataset.minutes as 'last7' | 'last30';
+      el.textContent = formatMinutes(summary[key]);
+    }
+  }
+
+  // Tag filter: with no tag selected the feed shows the most recent
+  // entries; selecting a tag shows every entry carrying it, however old.
+  const feedEntries = [...document.querySelectorAll<HTMLElement>('.feed .entry')];
+  const filterButtons = [...document.querySelectorAll<HTMLButtonElement>('.tag-filter [data-tag-filter]')];
+  const feedHeading = document.querySelector<HTMLElement>('#feed-heading');
+  let activeTag: string | null = null;
+
+  function applyTagFilter(tag: string | null) {
+    activeTag = tag;
+    for (const entry of feedEntries) {
+      const tags = JSON.parse(entry.dataset.tags ?? '[]') as string[];
+      entry.hidden = tag === null ? entry.dataset.recent !== 'true' : !tags.includes(tag);
+    }
+    for (const button of filterButtons) {
+      button.setAttribute('aria-pressed', String(button.dataset.tagFilter === tag));
+    }
+    if (feedHeading) feedHeading.textContent = tag === null ? 'Recent entries' : `Entries tagged #${tag}`;
+  }
+
+  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-tag-filter]')) {
+    button.addEventListener('click', () => {
+      const tag = button.dataset.tagFilter!;
+      applyTagFilter(activeTag === tag ? null : tag);
+    });
+  }
+</script>
+
 <style>
+  .section-title {
+    font-size: 1rem;
+    margin: 0;
+  }
+  .time-spent {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem;
+    margin: 1.5rem 0;
+    background: var(--surface);
+  }
+  .time-totals {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+    gap: 0.75rem;
+    margin: 0.75rem 0 1rem;
+  }
+  .time-total {
+    display: flex;
+    flex-direction: column;
+  }
+  .time-value {
+    font-size: 1.35rem;
+    font-weight: 600;
+  }
+  .time-label {
+    color: var(--text-dim);
+    font-size: 0.8rem;
+  }
+  .topic-minutes {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+  .topic-minutes li {
+    display: grid;
+    grid-template-columns: minmax(4rem, 8rem) 1fr auto;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.85rem;
+  }
+  .topic-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .topic-bar {
+    height: 6px;
+    border-radius: 3px;
+    background: var(--not-scheduled);
+    overflow: hidden;
+  }
+  .topic-bar span {
+    display: block;
+    height: 100%;
+    background: var(--accent);
+  }
+  .topic-value {
+    color: var(--text-dim);
+    white-space: nowrap;
+  }
+  .feed-heading-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-top: 1.5rem;
+  }
+  .tag-filter,
+  .entry-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+  .entry-tags {
+    margin-top: 0.5rem;
+  }
+  .tag-chip {
+    font: inherit;
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0.1rem 0.6rem;
+    cursor: pointer;
+  }
+  .tag-chip:hover {
+    color: var(--text);
+  }
+  .tag-chip[aria-pressed='true'] {
+    color: var(--bg);
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+  .tag-chip--small {
+    font-size: 0.75rem;
+    padding: 0 0.5rem;
+  }
+  .tag-count {
+    opacity: 0.7;
+  }
   .feed {
     list-style: none;
     padding: 0;

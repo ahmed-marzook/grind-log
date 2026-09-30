@@ -1,7 +1,10 @@
 ---
 import { getCollection } from 'astro:content';
 import Base from '../layouts/Base.astro';
+import { formatMinutes } from '../lib/format.js';
 import { summarizeGoalsByStatus } from '../lib/goals.js';
+import { summarizeMinutes } from '../lib/minutes.js';
+import { toScriptJson } from '../lib/serialize.js';
 import { getAllPersons } from '../lib/people.js';
 
 const logs = await getCollection('logs');
@@ -10,8 +13,18 @@ const persons = getAllPersons(logs.map((l) => l.data), goals.map((g) => g.data))
 
 const summaries = persons.map((person) => {
   const personGoals = goals.filter((g) => g.data.person === person).map((g) => g.data);
-  return { person, summary: summarizeGoalsByStatus(personGoals) };
+  return {
+    person,
+    summary: summarizeGoalsByStatus(personGoals),
+    // Build-time snapshot; "last 7 days" is recomputed client-side below.
+    minutes: summarizeMinutes(
+      logs.map((l) => l.data),
+      person,
+      new Date()
+    ),
+  };
 });
+const dataPayload = toScriptJson({ entries: logs.map((l) => l.data) });
 
 const base = import.meta.env.BASE_URL;
 ---
@@ -20,15 +33,46 @@ const base = import.meta.env.BASE_URL;
   <h1>Stats</h1>
   <ul class="person-summaries">
     {
-      summaries.map(({ person, summary }) => (
+      summaries.map(({ person, summary, minutes }) => (
         <li>
           <a href={`${base}${person}/goals`}>{person}</a>
-          <span class="goal-summary">{summary}</span>
+          <span class="person-stats">
+            <span class="goal-summary">{summary}</span>
+            <span class="minutes-summary">
+              {minutes.sessions === 0 ? (
+                'no time logged yet'
+              ) : (
+                <>
+                  <span data-week-minutes={person}>{formatMinutes(minutes.last7)}</span> last 7
+                  days · {formatMinutes(minutes.total)} total
+                </>
+              )}
+            </span>
+          </span>
         </li>
       ))
     }
   </ul>
+  <script type="application/json" id="stats-data" is:inline set:html={dataPayload}></script>
 </Base>
+
+<script>
+  import { formatMinutes } from '../lib/format.js';
+  import { summarizeMinutes } from '../lib/minutes.js';
+  import { reviveLogEntries, type SerializedLogEntry } from '../lib/serialize.js';
+
+  // "Last 7 days" depends on today's date — correct the build-time
+  // snapshot against the viewer's real clock (see CLAUDE.md).
+  const statsDataEl = document.querySelector<HTMLScriptElement>('#stats-data');
+  if (statsDataEl) {
+    const raw = JSON.parse(statsDataEl.textContent!) as { entries: SerializedLogEntry[] };
+    const entries = reviveLogEntries(raw.entries);
+    const today = new Date();
+    for (const el of document.querySelectorAll<HTMLElement>('[data-week-minutes]')) {
+      el.textContent = formatMinutes(summarizeMinutes(entries, el.dataset.weekMinutes!, today).last7);
+    }
+  }
+</script>
 
 <style>
   .person-summaries {
@@ -45,6 +89,16 @@ const base = import.meta.env.BASE_URL;
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 0.75rem 1rem;
+  }
+  .person-stats {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    text-align: right;
+  }
+  .minutes-summary {
+    color: var(--text-dim);
+    font-size: 0.8rem;
   }
   .goal-summary {
     color: var(--text-dim);
