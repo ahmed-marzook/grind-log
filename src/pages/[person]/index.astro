@@ -5,6 +5,8 @@ import PersonNav from '../../components/PersonNav.astro';
 import LogEntryForm from '../../components/LogEntryForm.astro';
 import { getPersonTopics } from '../../lib/calendar.js';
 import { getAllPersons } from '../../lib/people.js';
+import { logFileUrl } from '../../lib/github.js';
+import { Icon } from 'astro-icon/components';
 
 export async function getStaticPaths() {
   const logs = await getCollection('logs');
@@ -45,10 +47,20 @@ const recentWithNotes = await Promise.all(
     {
       recentWithNotes.map(({ entry, Notes }) => (
         <li class={`entry entry--${entry.data.status}`}>
-          <time>{entry.data.date.toISOString().slice(0, 10)}</time>
+          <div class="entry-header">
+            <time>{entry.data.date.toISOString().slice(0, 10)}</time>
+            <a class="entry-source" href={logFileUrl(entry.id)} target="_blank" rel="noopener">
+              <Icon name="lucide:github" class="icon-inline" aria-hidden="true" />
+              View on GitHub
+            </a>
+          </div>
           {entry.data.status === 'completed' ? (
             <>
-              <h2>{entry.data.title}</h2>
+              <h2>
+                <a href={logFileUrl(entry.id)} target="_blank" rel="noopener">
+                  {entry.data.title}
+                </a>
+              </h2>
               <p class="entry-topic">
                 {entry.data.topic} · {entry.data.minutes} min
               </p>
@@ -84,9 +96,38 @@ const recentWithNotes = await Promise.all(
     color: var(--text-dim);
     font-size: 0.85rem;
   }
+  .entry-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.5rem;
+  }
+  .entry-source {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    text-decoration: none;
+  }
+  .entry-source:hover {
+    color: var(--text);
+    text-decoration: underline;
+  }
+  .entry-source :global(.icon-inline) {
+    width: 0.9em;
+    height: 0.9em;
+  }
   .entry h2 {
     margin: 0.25rem 0;
     font-size: 1.05rem;
+  }
+  .entry h2 a {
+    color: inherit;
+    text-decoration: none;
+  }
+  .entry h2 a:hover {
+    text-decoration: underline;
   }
   .entry-topic {
     margin: 0;
